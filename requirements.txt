@@ -8,25 +8,28 @@ torch>=1.10.0
 transformers>=4.15.0
 diffusers>=0.7.0
 accelerate>=0.12.0
+huggingface_hub>=0.12.0
 
 # Audio processing
 librosa>=0.8.1
 pydub>=0.25.1
 soundfile>=0.10.3
+audioread>=2.1.9
 
 # MIDI processing
 music21>=7.1.0
+mido>=1.2.10
 
 # UI frameworks
 gradio>=3.0.0
 streamlit>=1.10.0
 
-# Data management
-h5py>=3.6.0
-
 # Visualization
 matplotlib>=3.5.0
 seaborn>=0.11.2
+
+# Data management
+h5py>=3.6.0
 
 # Cloud utilities
 google-cloud-storage>=2.0.0
@@ -38,3 +41,9 @@ pytest>=6.2.5
 black>=22.1.0
 flake8>=4.0.1
 isort>=5.10.1
+
+# Optional: Audio effects
+# pedalboard>=0.5.10
+
+# Optional: Advanced audio processing
+# pyloudnorm>=0.1.0
