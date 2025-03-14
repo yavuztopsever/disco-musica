@@ -2,7 +2,7 @@
 MIDI-to-Audio model module for Disco Musica.
 
 This module provides a wrapper for MIDI-to-audio generation models,
-supporting models that can synthesize audio from MIDI input.
+with support for rendering MIDI into realistic audio performances.
 """
 
 import os
@@ -16,15 +16,16 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from modules.core.base_model import BaseModel, PretrainedModelMixin, TorchModelMixin
 from modules.core.config import config
+from modules.core.audio_processor import AudioProcessor
 from modules.core.midi_processor import MIDIProcessor
 
 
 class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
     """
-    Model for generating audio from MIDI input, optionally with text descriptions.
+    Model for generating audio from MIDI inputs.
     
-    This class wraps MIDI-to-audio models, providing a consistent interface for loading,
-    saving, and generating audio from MIDI data.
+    This class wraps MIDI-to-audio models, providing a consistent
+    interface for loading, saving, and generating audio from MIDI files.
     """
     
     def __init__(
@@ -58,9 +59,12 @@ class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
         # Flag to track model loading status
         self._is_loaded = False
         
-        # Specific model and processor
+        # MusicGen model and processor
         self.model = None
         self.processor = None
+        
+        # Audio and MIDI processors
+        self.audio_processor = AudioProcessor()
         self.midi_processor = MIDIProcessor()
     
     def load(self) -> None:
@@ -156,9 +160,10 @@ class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
     
     def generate(
         self, 
-        midi_path: Union[str, Path],
+        midi_input: Union[str, Path],
         prompt: Optional[str] = None,
-        instrument_description: Optional[str] = None,
+        instrument_prompt: Optional[str] = None,
+        duration: Optional[float] = None,
         temperature: Optional[float] = None,
         top_k: Optional[int] = None,
         top_p: Optional[float] = None,
@@ -166,12 +171,13 @@ class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
         return_tensor: bool = False
     ) -> Union[np.ndarray, torch.Tensor]:
         """
-        Generate audio from a MIDI file, optionally with text description.
+        Generate audio from a MIDI input.
         
         Args:
-            midi_path: Path to the MIDI file to synthesize.
-            prompt: Optional text prompt describing the desired sound.
-            instrument_description: Optional description of instruments to use.
+            midi_input: Path to the MIDI file.
+            prompt: Optional text prompt to guide generation.
+            instrument_prompt: Optional prompt describing the instrumentation.
+            duration: Duration of the generated audio in seconds.
             temperature: Sampling temperature (higher = more random).
             top_k: Number of top tokens to consider (0 = disabled).
             top_p: Nucleus sampling probability threshold (0 = disabled).
@@ -185,49 +191,35 @@ class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
             self.load()
         
         # Use default values from metadata if not provided
+        duration = duration or self.metadata["parameters"].get("max_duration", 30.0)
         temperature = temperature or self.metadata["parameters"].get("temperature", 1.0)
         top_k = top_k or self.metadata["parameters"].get("top_k", 250)
         top_p = top_p or self.metadata["parameters"].get("top_p", 0.0)
         cfg_coef = cfg_coef or self.metadata["parameters"].get("cfg_coef", 3.0)
         
         try:
-            # Load and process MIDI
-            midi_score = self.midi_processor.load_midi(midi_path)
+            # Process MIDI file to extract musical features
+            midi_score = self.midi_processor.load_midi(midi_input)
             
-            # Extract MIDI information for conditioning
-            key = self.midi_processor.extract_key(midi_score) or "C major"
+            # Extract key, tempo, and time signature
+            key = self.midi_processor.extract_key(midi_score) or "unknown key"
             tempo = self.midi_processor.extract_tempo(midi_score) or 120
             time_sig = self.midi_processor.extract_time_signature(midi_score) or "4/4"
             
-            # Extract melody for possible audio conditioning
-            melody_notes = self.midi_processor.extract_melody(midi_score)
+            # Extract melody notes
+            melody = self.midi_processor.extract_melody(midi_score)
             
-            # Create piano roll representation for visualization (not used in generation yet)
-            piano_roll = self.midi_processor.midi_to_pianoroll(midi_score)
-            
-            # Analyze MIDI to create a detailed text description
-            midi_info = self.midi_processor.analyze_midi(midi_score)
-            
-            # Create a comprehensive prompt if none is provided
-            if not prompt:
-                # Detect if it's a melody, chord progression, or full arrangement
-                if len(midi_info.get("part_count", 1)) == 1:
-                    midi_type = "melody"
-                elif piano_roll.shape[1] < 20:  # Simple heuristic for chord progressions
-                    midi_type = "chord progression"
-                else:
-                    midi_type = "musical arrangement"
+            # Create a descriptive prompt if not provided
+            if prompt is None:
+                # Get the MIDI filename without extension
+                midi_name = Path(midi_input).stem.replace("_", " ").replace("-", " ")
+                prompt = f"A {key} {time_sig} piece at {tempo} BPM called '{midi_name}'"
                 
-                # Create automatic prompt from MIDI analysis
-                auto_prompt = f"Generate music based on this {midi_type} in {key} at {tempo} BPM in {time_sig} time."
-                
-                if instrument_description:
-                    auto_prompt += f" Use {instrument_description}."
-                    
-                prompt = auto_prompt
+                if instrument_prompt:
+                    prompt += f" performed on {instrument_prompt}"
             
-            # For now, we handle MIDI as a text-to-music generation with a detailed prompt
-            # In the future, we could implement direct MIDI conditioning if supported by the model
+            # For now, we'll use a text-to-music approach with a descriptive prompt
+            # In a real implementation, we'd want to condition on the actual MIDI data
             
             # Prepare inputs
             inputs = self.processor(
@@ -236,8 +228,7 @@ class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
                 return_tensors="pt",
             ).to(self.device)
             
-            # Calculate appropriate generation length based on MIDI duration
-            duration = float(midi_info.get("total_duration", 30.0))
+            # Calculate max_new_tokens based on duration and model's audio_config
             sample_rate = self.model.config.audio_encoder.sampling_rate
             chunk_length = self.model.config.audio_encoder.chunk_length
             max_new_tokens = int(duration * sample_rate / chunk_length)
@@ -280,7 +271,7 @@ class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
                 return audio_values[0].cpu().numpy()  # Return first batch item as numpy array
                 
         except Exception as e:
-            raise RuntimeError(f"Music generation from MIDI failed: {e}")
+            raise RuntimeError(f"MIDI-to-audio generation failed: {e}")
     
     def is_loaded(self) -> bool:
         """
@@ -291,50 +282,74 @@ class MIDIToAudioModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
         """
         return self._is_loaded and self.model is not None
     
-    def generate_with_instrument(
+    def render_with_style(
         self,
-        midi_path: Union[str, Path],
-        instrument: str,
-        **kwargs
-    ) -> np.ndarray:
+        midi_input: Union[str, Path],
+        style_prompt: str,
+        duration: Optional[float] = None,
+        temperature: Optional[float] = None,
+        return_tensor: bool = False
+    ) -> Union[np.ndarray, torch.Tensor]:
         """
-        Generate audio from a MIDI file with a specific instrument sound.
+        Render a MIDI file in a specific style.
         
         Args:
-            midi_path: Path to the MIDI file to synthesize.
-            instrument: Instrument to use for synthesis (e.g., "piano", "guitar").
-            **kwargs: Additional arguments for the generate method.
+            midi_input: Path to the MIDI file.
+            style_prompt: Text prompt describing the desired style (e.g., "jazz piano", "orchestral").
+            duration: Duration of the generated audio in seconds.
+            temperature: Sampling temperature (higher = more random).
+            return_tensor: Whether to return a torch.Tensor (True) or numpy array (False).
             
         Returns:
-            Generated audio as a numpy array.
+            Generated audio as a numpy array or torch.Tensor.
         """
         return self.generate(
-            midi_path=midi_path,
-            instrument_description=instrument,
-            **kwargs
+            midi_input=midi_input,
+            instrument_prompt=style_prompt,
+            duration=duration,
+            temperature=temperature,
+            return_tensor=return_tensor
         )
     
-    def generate_arranged_version(
+    def harmonize(
         self,
-        midi_path: Union[str, Path],
-        arrangement_description: str,
-        **kwargs
-    ) -> np.ndarray:
+        midi_input: Union[str, Path],
+        style_prompt: str = "full band arrangement",
+        complexity: float = 0.7,
+        duration: Optional[float] = None,
+        return_tensor: bool = False
+    ) -> Union[np.ndarray, torch.Tensor]:
         """
-        Generate a fully arranged version of a MIDI file.
+        Harmonize a melody from a MIDI file.
         
         Args:
-            midi_path: Path to the MIDI file to arrange.
-            arrangement_description: Description of the desired arrangement.
-            **kwargs: Additional arguments for the generate method.
+            midi_input: Path to the MIDI file.
+            style_prompt: Text prompt describing the desired style.
+            complexity: Harmonic complexity (0.0 to 1.0).
+            duration: Duration of the generated audio in seconds.
+            return_tensor: Whether to return a torch.Tensor (True) or numpy array (False).
             
         Returns:
-            Generated audio as a numpy array.
+            Harmonized audio as a numpy array or torch.Tensor.
         """
-        prompt = f"Create a full arrangement of this music with {arrangement_description}"
+        # Process MIDI file to extract melody
+        midi_score = self.midi_processor.load_midi(midi_input)
+        
+        # Extract key and tempo
+        key = self.midi_processor.extract_key(midi_score) or "unknown key"
+        tempo = self.midi_processor.extract_tempo(midi_score) or 120
+        
+        # Create harmonization prompt
+        complexity_term = "complex" if complexity > 0.5 else "simple"
+        harmonization_prompt = f"Create a {complexity_term} {style_prompt} in {key} at {tempo} BPM, harmonizing the melody"
+        
+        # Apply higher temperature for more creative harmonization
+        temp = 0.9 if complexity > 0.5 else 0.7
         
         return self.generate(
-            midi_path=midi_path,
-            prompt=prompt,
-            **kwargs
+            midi_input=midi_input,
+            prompt=harmonization_prompt,
+            duration=duration,
+            temperature=temp,
+            return_tensor=return_tensor
         )

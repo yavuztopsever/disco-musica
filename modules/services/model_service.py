@@ -6,6 +6,7 @@ This module provides services for model selection, management, and registration.
 
 import os
 import json
+import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -510,14 +511,12 @@ class ModelService:
                 return TextToMusicModel(model_id, model_type)
             
             elif model_class_name == "AudioToMusicModel":
-                # This would be implemented in a separate module
-                print("AudioToMusicModel not yet implemented")
-                return None
+                from modules.core.audio_to_music_model import AudioToMusicModel
+                return AudioToMusicModel(model_id, model_type)
             
             elif model_class_name == "MIDIToAudioModel":
-                # This would be implemented in a separate module
-                print("MIDIToAudioModel not yet implemented")
-                return None
+                from modules.core.midi_to_audio_model import MIDIToAudioModel
+                return MIDIToAudioModel(model_id, model_type)
             
             else:
                 print(f"Unknown model class: {model_class_name}")

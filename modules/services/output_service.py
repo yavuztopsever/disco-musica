@@ -14,6 +14,8 @@ from typing import Dict, List, Optional, Set, Union
 
 import numpy as np
 import matplotlib.pyplot as plt
+import librosa
+import librosa.display
 
 from modules.core.config import config
 from modules.core.audio_processor import AudioProcessor

@@ -201,12 +201,95 @@ class TrainingManager:
         Returns:
             Path to the fine-tuned model.
         """
-        # This is a placeholder for parameter-efficient fine-tuning (LoRA)
-        # In a real implementation, this would use LoRA for fine-tuning
-        print("Parameter-efficient fine-tuning (LoRA) is not yet implemented.")
+        try:
+            # Check if peft library is available
+            import peft
+            from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
+        except ImportError:
+            print("PEFT library not found. Install with: pip install peft")
+            print("Falling back to regular fine-tuning")
+            return self.fine_tune(training_setup, training_args)
+            
+        # Load pre-trained model and tokenizer
+        model_dir = training_setup["model_dir"]
+        tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        model = AutoModelForCausalLM.from_pretrained(model_dir).to(self.device)
         
-        # Return the output directory
-        return str(training_setup["output_dir"])
+        # Prepare dataset
+        dataset_dir = training_setup["dataset_dir"]
+        dataset = self.prepare_dataset(dataset_dir, tokenizer)
+        
+        # Create LoRA configuration
+        target_modules = ["q_proj", "v_proj"]  # Default target modules, can be customized
+        
+        lora_config = LoraConfig(
+            r=rank,
+            lora_alpha=alpha,
+            target_modules=target_modules,
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM"
+        )
+        
+        # Apply LoRA adapter to the model
+        model = get_peft_model(model, lora_config)
+        
+        # Print trainable parameters info
+        model.print_trainable_parameters()
+        
+        # Set up training arguments
+        output_dir = training_setup["output_dir"]
+        default_training_args = {
+            "output_dir": str(output_dir),
+            "overwrite_output_dir": True,
+            "num_train_epochs": 3,
+            "per_device_train_batch_size": 4,
+            "save_steps": 10_000,
+            "save_total_limit": 2,
+            "prediction_loss_only": True,
+            "logging_dir": str(Path(output_dir) / "logs"),
+            "logging_steps": 100,
+        }
+        
+        if training_args:
+            default_training_args.update(training_args)
+        
+        training_args = TrainingArguments(**default_training_args)
+        
+        # Set up data collator
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+        
+        # Set up trainer
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            data_collator=data_collator,
+            train_dataset=dataset,
+        )
+        
+        # Fine-tune the model
+        trainer.train()
+        
+        # Save the fine-tuned model and adapter
+        model.save_pretrained(output_dir)
+        tokenizer.save_pretrained(output_dir)
+        
+        # Save adapter configuration
+        adapter_config = {
+            "type": "lora",
+            "rank": rank,
+            "alpha": alpha, 
+            "target_modules": target_modules,
+            "trained_on": str(dataset_dir),
+            "creation_date": time.strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        with open(Path(output_dir) / "adapter_config.json", "w") as f:
+            import json
+            json.dump(adapter_config, f, indent=2)
+        
+        print(f"Fine-tuned model with LoRA saved to: {output_dir}")
+        return str(output_dir)
 
     def export_to_colab(
         self, training_setup: Dict, colab_notebook_path: Optional[str] = None

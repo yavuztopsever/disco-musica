@@ -2,7 +2,7 @@
 Audio-to-Music model module for Disco Musica.
 
 This module provides a wrapper for audio-to-music generation models,
-supporting models like MusicGen Melody that can condition on audio input.
+with support for audio continuation and style transfer.
 """
 
 import os
@@ -10,7 +10,6 @@ import time
 import datetime
 import json
 import torch
-import librosa
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
@@ -22,10 +21,10 @@ from modules.core.audio_processor import AudioProcessor
 
 class AudioToMusicModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
     """
-    Model for generating music from audio input, optionally with text descriptions.
+    Model for generating music from audio inputs.
     
     This class wraps audio-to-music models like MusicGen Melody, providing a consistent
-    interface for loading, saving, and generating music conditioned on audio.
+    interface for loading, saving, and generating music from audio inputs.
     """
     
     def __init__(
@@ -62,6 +61,8 @@ class AudioToMusicModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
         # MusicGen model and processor
         self.model = None
         self.processor = None
+        
+        # Audio processor for handling audio inputs
         self.audio_processor = AudioProcessor()
     
     def load(self) -> None:
@@ -157,7 +158,7 @@ class AudioToMusicModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
     
     def generate(
         self, 
-        audio_path: Union[str, Path],
+        audio_input: Union[np.ndarray, str, Path],
         prompt: Optional[str] = None,
         duration: Optional[float] = None,
         temperature: Optional[float] = None,
@@ -167,11 +168,11 @@ class AudioToMusicModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
         return_tensor: bool = False
     ) -> Union[np.ndarray, torch.Tensor]:
         """
-        Generate music from an audio input, optionally with a text description.
+        Generate music from an audio input.
         
         Args:
-            audio_path: Path to the audio file to use as conditioning.
-            prompt: Optional text prompt describing the music to generate.
+            audio_input: Audio data as numpy array or path to audio file.
+            prompt: Optional text prompt to guide generation.
             duration: Duration of the generated audio in seconds.
             temperature: Sampling temperature (higher = more random).
             top_k: Number of top tokens to consider (0 = disabled).
@@ -193,31 +194,25 @@ class AudioToMusicModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
         cfg_coef = cfg_coef or self.metadata["parameters"].get("cfg_coef", 3.0)
         
         try:
-            # Load and process input audio
-            audio_data, sr = self.audio_processor.load_audio(audio_path, self.model.config.audio_encoder.sampling_rate)
+            # Load audio if path is provided
+            if isinstance(audio_input, (str, Path)):
+                audio_data, sr = self.audio_processor.load_audio(audio_input)
+            else:
+                audio_data = audio_input
+                sr = self.metadata["parameters"].get("sample_rate", 44100)
+            
+            # Prepare empty text prompt if none provided
+            if prompt is None:
+                prompt = ""
             
             # Prepare inputs
-            inputs = {}
-            
-            # Process melody conditioning
-            if hasattr(self.processor, "process_audio"):
-                audio_values = self.processor.process_audio(
-                    raw_audio=audio_data,
-                    sampling_rate=sr,
-                    return_tensors="pt"
-                ).to(self.device)
-                
-                inputs["audio_values"] = audio_values
-            
-            # Process text conditioning if provided
-            if prompt:
-                text_inputs = self.processor(
-                    text=[prompt],
-                    padding=True,
-                    return_tensors="pt",
-                ).to(self.device)
-                
-                inputs.update(text_inputs)
+            inputs = self.processor(
+                text=[prompt],
+                audio=audio_data,
+                sampling_rate=sr,
+                padding=True,
+                return_tensors="pt",
+            ).to(self.device)
             
             # Calculate max_new_tokens based on duration and model's audio_config
             sample_rate = self.model.config.audio_encoder.sampling_rate
@@ -244,18 +239,10 @@ class AudioToMusicModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
             start_time = time.time()
             
             with torch.inference_mode():
-                # If model has melody generation capability
-                if "audio_values" in inputs:
-                    generated_audio = self.model.generate_with_audio(
-                        **inputs,
-                        **generation_kwargs
-                    )
-                # Fallback to regular generation if audio conditioning not supported
-                else:
-                    generated_audio = self.model.generate(
-                        **inputs,
-                        **generation_kwargs
-                    )
+                generated_audio = self.model.generate(
+                    **inputs,
+                    **generation_kwargs
+                )
             
             generation_time = time.time() - start_time
             print(f"Generation took {generation_time:.2f} seconds")
@@ -281,62 +268,72 @@ class AudioToMusicModel(BaseModel, PretrainedModelMixin, TorchModelMixin):
         """
         return self._is_loaded and self.model is not None
     
-    def generate_continuation(
+    def continue_audio(
         self,
-        audio_path: Union[str, Path],
+        audio_input: Union[np.ndarray, str, Path],
         duration: Optional[float] = None,
         temperature: Optional[float] = None,
-        **kwargs
-    ) -> np.ndarray:
+        prompt: Optional[str] = None,
+        return_tensor: bool = False
+    ) -> Union[np.ndarray, torch.Tensor]:
         """
-        Generate a continuation of an audio clip.
+        Continue audio from an input sample.
         
         Args:
-            audio_path: Path to the audio file to continue.
+            audio_input: Audio data as numpy array or path to audio file.
             duration: Duration of the generated continuation in seconds.
             temperature: Sampling temperature (higher = more random).
-            **kwargs: Additional arguments for the generate method.
+            prompt: Optional text prompt to guide generation.
+            return_tensor: Whether to return a torch.Tensor (True) or numpy array (False).
             
         Returns:
-            Generated audio continuation as a numpy array.
+            Generated audio continuation as a numpy array or torch.Tensor.
         """
-        # This is essentially a convenience method that calls generate with a specific prompt
+        # This is a specialized case of the generate method optimized for continuation
+        if prompt is None:
+            prompt = "Continue this audio in the same style"
+        
         return self.generate(
-            audio_path=audio_path,
-            prompt="Continue this musical piece in the same style",
+            audio_input=audio_input,
+            prompt=prompt,
             duration=duration,
             temperature=temperature,
-            **kwargs
+            return_tensor=return_tensor
         )
     
-    def generate_style_transfer(
+    def style_transfer(
         self,
-        content_audio_path: Union[str, Path],
-        style_audio_path: Union[str, Path],
-        prompt: Optional[str] = None,
-        **kwargs
-    ) -> np.ndarray:
+        audio_input: Union[np.ndarray, str, Path],
+        style_prompt: str,
+        duration: Optional[float] = None,
+        strength: float = 0.8,
+        return_tensor: bool = False
+    ) -> Union[np.ndarray, torch.Tensor]:
         """
-        Generate music by applying the style of one audio to the content of another.
+        Perform style transfer on an audio input.
         
         Args:
-            content_audio_path: Path to the audio file providing the content.
-            style_audio_path: Path to the audio file providing the style.
-            prompt: Optional text prompt to guide the style transfer.
-            **kwargs: Additional arguments for the generate method.
+            audio_input: Audio data as numpy array or path to audio file.
+            style_prompt: Text prompt describing the desired style.
+            duration: Duration of the generated audio in seconds.
+            strength: Strength of the style transfer (0.0 to 1.0).
+            return_tensor: Whether to return a torch.Tensor (True) or numpy array (False).
             
         Returns:
-            Generated audio with style transfer as a numpy array.
+            Style-transferred audio as a numpy array or torch.Tensor.
         """
-        # Note: This is a simplified approximation of style transfer
-        # In a more sophisticated implementation, you would extract features from both
-        # content and style audio and combine them in a meaningful way
+        # For style transfer, we use classifier-free guidance to control the balance
+        # between the audio conditioning and the text conditioning
         
-        # For now, we use the style audio as conditioning and describe the content in the prompt
-        content_description = prompt or "Transfer the style while maintaining the melody and structure"
+        # Higher CFG values follow the prompt more closely
+        # Lower values follow the audio conditioning more closely
+        cfg_coef = 3.0 + (strength * 4.0)  # Scale from 3.0 to 7.0 based on strength
         
         return self.generate(
-            audio_path=style_audio_path,
-            prompt=content_description,
-            **kwargs
+            audio_input=audio_input,
+            prompt=style_prompt,
+            duration=duration,
+            cfg_coef=cfg_coef,
+            temperature=0.7,  # Lower temperature for more coherent style transfer
+            return_tensor=return_tensor
         )

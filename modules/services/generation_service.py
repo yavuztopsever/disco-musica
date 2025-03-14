@@ -199,10 +199,6 @@ class GenerationService:
         Returns:
             Dictionary containing generation results.
         """
-        # This is a placeholder for audio-to-music generation.
-        # In a real implementation, this would call an AudioToMusicModel.
-        print("Audio-to-music generation is not yet implemented")
-        
         # Start timing
         start_time = time.time()
         
@@ -215,24 +211,89 @@ class GenerationService:
             if model_id is None:
                 raise ValueError("No default model found for audio-to-music generation")
         
+        # Set seed if specified
+        if seed is not None:
+            import torch
+            import random
+            import numpy as np
+            torch.manual_seed(seed)
+            random.seed(seed)
+            np.random.seed(seed)
+        
         try:
-            # Load audio
-            audio_data, sample_rate = self.audio_processor.load_audio(audio_path)
+            # Create model instance
+            model = self.model_service.create_model_instance(model_id)
+            if model is None:
+                raise ValueError(f"Failed to create model instance for {model_id}")
             
-            # For now, just pass through to text-to-music with a placeholder prompt
-            if prompt is None:
-                prompt = "Continue this music in a similar style"
-            
-            # Use text-to-music generation as a fallback
-            return self.generate_from_text(
+            # Generate audio
+            audio_data = model.generate(
+                audio_input=audio_path,
                 prompt=prompt,
-                model_id=model_id,
                 duration=duration,
-                temperature=temperature,
-                seed=seed,
-                save_output=save_output,
-                output_format=output_format
+                temperature=temperature
             )
+            
+            # Get model parameters
+            sample_rate = model.metadata["parameters"].get("sample_rate", 44100)
+            
+            # Save output if requested
+            output_path = None
+            if save_output:
+                # Create output directory
+                output_subdir = self.output_dir / "audio_to_music"
+                os.makedirs(output_subdir, exist_ok=True)
+                
+                # Generate filename
+                timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+                filename = f"audio_to_music_{timestamp}.{output_format}"
+                output_path = output_subdir / filename
+                
+                # Save audio
+                self.audio_processor.save_audio(
+                    audio_data=audio_data,
+                    output_path=output_path,
+                    sr=sample_rate,
+                    format=output_format
+                )
+            
+            # Analyze audio
+            audio_analysis = self.audio_processor.analyze_audio(audio_data, sample_rate)
+            
+            # Calculate generation time
+            generation_time = time.time() - start_time
+            
+            # Prepare result
+            result = {
+                "generation_id": generation_id,
+                "model_id": model_id,
+                "prompt": prompt,
+                "input_path": str(audio_path),
+                "audio_data": audio_data,
+                "sample_rate": sample_rate,
+                "duration": len(audio_data) / sample_rate,
+                "output_path": str(output_path) if output_path else None,
+                "generation_time": generation_time,
+                "parameters": {
+                    "duration": duration,
+                    "temperature": temperature,
+                    "seed": seed
+                },
+                "analysis": audio_analysis
+            }
+            
+            # Save to history
+            self.history[generation_id] = {
+                "type": "audio_to_music",
+                "timestamp": datetime.datetime.now().isoformat(),
+                "model_id": model_id,
+                "prompt": prompt,
+                "input_path": str(audio_path),
+                "output_path": str(output_path) if output_path else None,
+                "parameters": result["parameters"]
+            }
+            
+            return result
         
         except Exception as e:
             print(f"Error in audio-to-music generation: {e}")
@@ -243,6 +304,8 @@ class GenerationService:
         midi_path: Union[str, Path],
         prompt: Optional[str] = None,
         model_id: Optional[str] = None,
+        instrument_prompt: Optional[str] = None,
+        duration: Optional[float] = None,
         temperature: Optional[float] = None,
         seed: Optional[int] = None,
         save_output: bool = True,
@@ -255,6 +318,8 @@ class GenerationService:
             midi_path: Path to the input MIDI file.
             prompt: Optional text prompt to guide generation.
             model_id: ID of the model to use. If None, the default model is used.
+            instrument_prompt: Optional prompt describing the instrumentation.
+            duration: Duration of the generated audio in seconds.
             temperature: Sampling temperature (higher = more random).
             seed: Random seed for reproducibility.
             save_output: Whether to save the generated audio.
@@ -263,10 +328,6 @@ class GenerationService:
         Returns:
             Dictionary containing generation results.
         """
-        # This is a placeholder for MIDI-to-audio generation.
-        # In a real implementation, this would call a MIDIToAudioModel.
-        print("MIDI-to-audio generation is not yet implemented")
-        
         # Start timing
         start_time = time.time()
         
@@ -279,20 +340,92 @@ class GenerationService:
             if model_id is None:
                 raise ValueError("No default model found for MIDI-to-audio generation")
         
+        # Set seed if specified
+        if seed is not None:
+            import torch
+            import random
+            import numpy as np
+            torch.manual_seed(seed)
+            random.seed(seed)
+            np.random.seed(seed)
+        
         try:
-            # For now, just use text-to-music generation with a placeholder prompt
-            if prompt is None:
-                prompt = "Generate music based on a MIDI file with piano and strings"
+            # Create model instance
+            model = self.model_service.create_model_instance(model_id)
+            if model is None:
+                raise ValueError(f"Failed to create model instance for {model_id}")
             
-            # Use text-to-music generation as a fallback
-            return self.generate_from_text(
+            # Generate audio
+            audio_data = model.generate(
+                midi_input=midi_path,
                 prompt=prompt,
-                model_id=model_id,
-                temperature=temperature,
-                seed=seed,
-                save_output=save_output,
-                output_format=output_format
+                instrument_prompt=instrument_prompt,
+                duration=duration,
+                temperature=temperature
             )
+            
+            # Get model parameters
+            sample_rate = model.metadata["parameters"].get("sample_rate", 44100)
+            
+            # Save output if requested
+            output_path = None
+            if save_output:
+                # Create output directory
+                output_subdir = self.output_dir / "midi_to_audio"
+                os.makedirs(output_subdir, exist_ok=True)
+                
+                # Generate filename
+                timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+                filename = f"midi_to_audio_{timestamp}.{output_format}"
+                output_path = output_subdir / filename
+                
+                # Save audio
+                self.audio_processor.save_audio(
+                    audio_data=audio_data,
+                    output_path=output_path,
+                    sr=sample_rate,
+                    format=output_format
+                )
+            
+            # Analyze audio
+            audio_analysis = self.audio_processor.analyze_audio(audio_data, sample_rate)
+            
+            # Calculate generation time
+            generation_time = time.time() - start_time
+            
+            # Prepare result
+            result = {
+                "generation_id": generation_id,
+                "model_id": model_id,
+                "prompt": prompt,
+                "instrument_prompt": instrument_prompt,
+                "input_path": str(midi_path),
+                "audio_data": audio_data,
+                "sample_rate": sample_rate,
+                "duration": len(audio_data) / sample_rate,
+                "output_path": str(output_path) if output_path else None,
+                "generation_time": generation_time,
+                "parameters": {
+                    "duration": duration,
+                    "temperature": temperature,
+                    "seed": seed
+                },
+                "analysis": audio_analysis
+            }
+            
+            # Save to history
+            self.history[generation_id] = {
+                "type": "midi_to_audio",
+                "timestamp": datetime.datetime.now().isoformat(),
+                "model_id": model_id,
+                "prompt": prompt,
+                "instrument_prompt": instrument_prompt,
+                "input_path": str(midi_path),
+                "output_path": str(output_path) if output_path else None,
+                "parameters": result["parameters"]
+            }
+            
+            return result
         
         except Exception as e:
             print(f"Error in MIDI-to-audio generation: {e}")
