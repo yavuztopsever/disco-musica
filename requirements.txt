@@ -1,36 +1,44 @@
 # Core dependencies
-torch>=2.0.0
-torchvision>=0.15.0
-numpy>=1.24.0
-scipy>=1.11.0
-matplotlib>=3.7.0
-pandas>=2.0.0
-pillow>=10.0.0
+numpy>=1.21.0
+torch>=1.9.0
+torchaudio>=0.9.0
+transformers>=4.11.0
+librosa>=0.8.1
+pretty_midi>=0.2.9
+soundfile>=0.10.3
+scipy>=1.7.1
+matplotlib>=3.4.3
 
 # Audio processing
-librosa>=0.10.0
-soundfile>=0.12.0
-pydub>=0.25.0
-ffmpeg-python>=0.2.0
+pydub>=0.25.1
+audioread>=2.1.9
+sounddevice>=0.4.3
 
 # MIDI processing
-music21>=8.0.0
-mido>=1.2.0
-pretty_midi>=0.2.0
+midiutil>=1.2.1
+music21>=7.1.0
 
-# Machine learning & AI
-transformers>=4.30.0
-huggingface_hub>=0.16.0
-accelerate>=0.21.0
-diffusers>=0.19.0
-safetensors>=0.3.0
+# Web interface
+gradio>=3.50.2
+streamlit>=1.2.0
 
-# UI
-gradio>=3.40.0
-streamlit>=1.26.0
+# Visualization
+plotly>=5.3.1
+bokeh>=2.4.1
+seaborn>=0.11.2
 
-# Utilities
-tqdm>=4.65.0
-requests>=2.31.0
-pyyaml>=6.0.0
-python-dotenv>=1.0.0
+# Machine learning
+scikit-learn>=0.24.2
+tensorboard>=2.7.0
+wandb>=0.12.1
+
+# Cloud integration
+google-cloud-storage>=1.42.0
+boto3>=1.18.0
+azure-storage-blob>=12.9.0
+
+# Development tools
+black>=21.9b0
+flake8>=3.9.2
+pytest>=6.2.5
+mypy>=0.910

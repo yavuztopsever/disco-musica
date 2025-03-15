@@ -1,81 +1,106 @@
-"""
-Tests for the Data Ingestion Module.
-"""
+"""Tests for the data ingestion module."""
 
 import os
 import pytest
 from pathlib import Path
-import tempfile
-import shutil
-
-from modules.data_ingestion import DataIngestionModule
-
+from disco_musica.modules.data_ingestion import DataIngestionModule
 
 @pytest.fixture
-def temp_dir():
-    """Create a temporary directory for testing."""
-    temp_dir = tempfile.mkdtemp()
-    yield temp_dir
-    shutil.rmtree(temp_dir)
-
+def data_dir(tmp_path):
+    """Create a temporary directory for test data."""
+    return tmp_path / "test_data"
 
 @pytest.fixture
-def data_ingestion(temp_dir):
+def ingestion_module(data_dir):
     """Create a DataIngestionModule instance for testing."""
-    return DataIngestionModule(data_dir=temp_dir)
+    return DataIngestionModule(data_dir=data_dir)
 
+def test_initialization(ingestion_module, data_dir):
+    """Test that the module initializes correctly."""
+    assert ingestion_module.data_dir == data_dir
+    assert data_dir.exists()
 
-@pytest.fixture
-def sample_audio_file(temp_dir):
-    """Create a sample audio file for testing."""
-    from pydub import AudioSegment
-    
-    # Create a sample audio file
-    audio_path = Path(temp_dir) / "sample.wav"
-    sample_rate = 44100
-    duration_ms = 1000  # 1 second
-    
-    # Generate a silent audio segment
-    audio = AudioSegment.silent(duration=duration_ms)
-    
-    # Export the audio file
-    audio.export(audio_path, format="wav")
-    
-    return audio_path
-
-
-def test_init(data_ingestion, temp_dir):
-    """Test initialization of DataIngestionModule."""
-    assert data_ingestion.data_dir == Path(temp_dir)
-    assert data_ingestion.raw_dir == Path(temp_dir) / "raw"
-    assert data_ingestion.processed_dir == Path(temp_dir) / "processed"
-    assert data_ingestion.datasets_dir == Path(temp_dir) / "datasets"
-    
-    # Check if directories were created
-    assert os.path.exists(data_ingestion.raw_dir)
-    assert os.path.exists(data_ingestion.processed_dir)
-    assert os.path.exists(data_ingestion.datasets_dir)
-
-
-def test_ingest_audio(data_ingestion, sample_audio_file):
+def test_audio_file_ingestion(ingestion_module, data_dir):
     """Test ingesting an audio file."""
-    # Ingest the sample audio file
-    target_path = data_ingestion.ingest_audio(sample_audio_file)
+    # Create a dummy audio file
+    audio_file = data_dir / "test.wav"
+    audio_file.touch()
     
-    # Check if the file was ingested
-    assert os.path.exists(target_path)
-    assert target_path.parent == data_ingestion.raw_dir / "audio"
+    # Test ingestion
+    result = ingestion_module.ingest_audio(audio_file)
+    assert result is not None
+    assert result.exists()
 
+def test_midi_file_ingestion(ingestion_module, data_dir):
+    """Test ingesting a MIDI file."""
+    # Create a dummy MIDI file
+    midi_file = data_dir / "test.mid"
+    midi_file.touch()
+    
+    # Test ingestion
+    result = ingestion_module.ingest_midi(midi_file)
+    assert result is not None
+    assert result.exists()
 
-def test_ingest_audio_with_target_dir(data_ingestion, sample_audio_file, temp_dir):
-    """Test ingesting an audio file with a specific target directory."""
-    # Create a target directory
-    target_dir = Path(temp_dir) / "custom_target"
-    os.makedirs(target_dir, exist_ok=True)
+def test_invalid_file_type(ingestion_module, data_dir):
+    """Test handling of invalid file types."""
+    # Create a file with invalid extension
+    invalid_file = data_dir / "test.txt"
+    invalid_file.touch()
     
-    # Ingest the sample audio file
-    target_path = data_ingestion.ingest_audio(sample_audio_file, target_dir=str(target_dir))
+    # Test that invalid file type raises ValueError
+    with pytest.raises(ValueError):
+        ingestion_module.ingest_audio(invalid_file)
+
+def test_nonexistent_file(ingestion_module):
+    """Test handling of nonexistent files."""
+    nonexistent_file = Path("nonexistent.wav")
     
-    # Check if the file was ingested
-    assert os.path.exists(target_path)
-    assert target_path.parent == target_dir
+    # Test that nonexistent file raises FileNotFoundError
+    with pytest.raises(FileNotFoundError):
+        ingestion_module.ingest_audio(nonexistent_file)
+
+def test_directory_creation(ingestion_module, data_dir):
+    """Test that necessary directories are created."""
+    # Check that subdirectories exist
+    assert (data_dir / "audio").exists()
+    assert (data_dir / "midi").exists()
+    assert (data_dir / "processed").exists()
+
+def test_file_validation(ingestion_module, data_dir):
+    """Test file validation functionality."""
+    # Create a file with invalid content
+    invalid_audio = data_dir / "invalid.wav"
+    invalid_audio.write_bytes(b"invalid content")
+    
+    # Test that invalid file content raises ValueError
+    with pytest.raises(ValueError):
+        ingestion_module.validate_audio_file(invalid_audio)
+
+def test_batch_processing(ingestion_module, data_dir):
+    """Test batch processing of multiple files."""
+    # Create multiple test files
+    files = [
+        data_dir / f"test_{i}.wav" for i in range(3)
+    ]
+    for file in files:
+        file.touch()
+    
+    # Test batch processing
+    results = ingestion_module.process_batch(files)
+    assert len(results) == len(files)
+    assert all(result.exists() for result in results)
+
+def test_error_handling(ingestion_module, data_dir):
+    """Test error handling during ingestion."""
+    # Create a file with invalid permissions
+    restricted_file = data_dir / "restricted.wav"
+    restricted_file.touch()
+    os.chmod(restricted_file, 0o000)
+    
+    # Test that permission error is handled
+    with pytest.raises(PermissionError):
+        ingestion_module.ingest_audio(restricted_file)
+    
+    # Restore permissions for cleanup
+    os.chmod(restricted_file, 0o644)

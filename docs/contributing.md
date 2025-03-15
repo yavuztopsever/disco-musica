@@ -4,40 +4,35 @@ Thank you for your interest in contributing to Disco Musica! This document provi
 
 ## Table of Contents
 
-1. [Code of Conduct](#code-of-conduct)
-2. [Getting Started](#getting-started)
-3. [How to Contribute](#how-to-contribute)
-4. [Development Workflow](#development-workflow)
-5. [Pull Request Process](#pull-request-process)
-6. [Style Guidelines](#style-guidelines)
-7. [Testing](#testing)
-8. [Documentation](#documentation)
-9. [Community](#community)
+1. [Code of Conduct](mdc:#code-of-conduct)
+2. [Getting Started](mdc:#getting-started)
+3. [Development Setup](mdc:#development-setup)
+4. [Contributing Process](mdc:#contributing-process)
+5. [Code Style](mdc:#code-style)
+6. [Testing](mdc:#testing)
+7. [Documentation](mdc:#documentation)
+8. [Release Process](mdc:#release-process)
 
 ## Code of Conduct
 
-We are committed to fostering an open and welcoming environment. By participating in this project, you agree to abide by the [Code of Conduct](CODE_OF_CONDUCT.md).
+By participating in this project, you agree to abide by our Code of Conduct. Please read the [Code of Conduct](CODE_OF_CONDUCT.md) before contributing to the project.
 
 ## Getting Started
 
-### Prerequisites
-
-- Python 3.8+
-- PyTorch or TensorFlow
-- Audio processing libraries (Librosa, PyDub)
-- MIDI processing libraries (Music21)
-- Git
-
-### Setup
-
-1. Fork the repository on GitHub.
-2. Clone your forked repository:
+1. Fork the repository
+2. Clone your fork:
    ```bash
    git clone https://github.com/yourusername/disco-musica.git
    cd disco-musica
    ```
+3. Create a new branch for your feature:
+   ```bash
+   git checkout -b feature/your-feature-name
+   ```
 
-3. Create and activate a virtual environment:
+## Development Setup
+
+1. Create and activate a virtual environment:
    ```bash
    python -m venv venv
    source venv/bin/activate  # On macOS/Linux
@@ -45,161 +40,135 @@ We are committed to fostering an open and welcoming environment. By participatin
    venv\Scripts\activate  # On Windows
    ```
 
-4. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-5. Install development dependencies:
+2. Install development dependencies:
    ```bash
    pip install -r requirements-dev.txt
    ```
 
-## How to Contribute
-
-There are many ways to contribute to Disco Musica:
-
-- **Code**: Implement new features, fix bugs, or improve performance.
-- **Documentation**: Improve documentation, write tutorials, or fix typos.
-- **Testing**: Write tests, report bugs, or help with quality assurance.
-- **Design**: Improve the user interface or create visual assets.
-- **Ideas**: Suggest new features or improvements.
-
-### Finding Issues to Work On
-
-- Check the [Issues](https://github.com/yourusername/disco-musica/issues) page for open issues.
-- Look for issues labeled "good first issue" if you're new to the project.
-- If you find a bug or have an idea for a new feature, create a new issue before starting work.
-
-## Development Workflow
-
-1. Create a new branch for your feature or bug fix:
+3. Install pre-commit hooks:
    ```bash
-   git checkout -b feature/your-feature-name
-   # or
-   git checkout -b fix/your-bug-fix
+   pre-commit install
    ```
 
-2. Make your changes, following the [Style Guidelines](#style-guidelines).
+## Contributing Process
 
-3. Write tests for your changes.
+1. **Plan Your Contribution**
+   - Check existing issues and pull requests
+   - Create a new issue if needed
+   - Discuss your approach with maintainers
 
-4. Run the tests to ensure they pass:
-   ```bash
-   pytest
-   ```
+2. **Make Your Changes**
+   - Follow the code style guidelines
+   - Write tests for new features
+   - Update documentation
+   - Commit your changes with clear messages
 
-5. Commit your changes:
-   ```bash
-   git add .
-   git commit -m "Your descriptive commit message"
-   ```
+3. **Submit Your Changes**
+   - Push your changes to your fork
+   - Create a pull request
+   - Provide a clear description of your changes
+   - Link related issues
 
-6. Push your branch to GitHub:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
+4. **Review Process**
+   - Address review comments
+   - Make requested changes
+   - Ensure CI checks pass
+   - Get approval from maintainers
 
-7. Create a pull request on GitHub.
+## Code Style
 
-## Pull Request Process
+We follow PEP 8 guidelines and use Black for code formatting.
 
-1. Ensure your code passes all tests and follows the style guidelines.
-2. Update the documentation if needed.
-3. Fill out the pull request template with all required information.
-4. Request a review from one of the maintainers.
-5. Address any feedback from reviewers.
-6. Once approved, your pull request will be merged.
+1. **Python Code Style**
+   - Use 4 spaces for indentation
+   - Maximum line length: 88 characters (Black default)
+   - Use descriptive variable names
+   - Add type hints
+   - Write docstrings for all public functions
 
-## Style Guidelines
+2. **Documentation Style**
+   - Use Google-style docstrings
+   - Include examples in docstrings
+   - Keep documentation up to date
+   - Use clear and concise language
 
-### Python Code Style
-
-We follow the [PEP 8](https://www.python.org/dev/peps/pep-0008/) style guide for Python code. Additionally, we use:
-
-- [Black](https://black.readthedocs.io/) for code formatting
-- [Flake8](https://flake8.pycqa.org/) for linting
-- [isort](https://pycqa.github.io/isort/) for sorting imports
-
-To check and format your code, run:
-```bash
-black .
-isort .
-flake8
-```
-
-### Docstrings
-
-We use [Google-style docstrings](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html). Example:
-
-```python
-def func(arg1, arg2):
-    """Summary of function.
-
-    Args:
-        arg1: Description of arg1.
-        arg2: Description of arg2.
-
-    Returns:
-        Description of return value.
-
-    Raises:
-        ValueError: Description of when ValueError is raised.
-    """
-    return result
-```
-
-### Commit Messages
-
-- Use the imperative mood ("Add feature" not "Added feature").
-- First line should be 50 characters or less.
-- Reference issues and pull requests where appropriate.
-- Consider using [Conventional Commits](https://www.conventionalcommits.org/) format.
+3. **Git Commit Messages**
+   - Use present tense ("Add feature" not "Added feature")
+   - First line should be 50 characters or less
+   - Add detailed description if needed
+   - Reference issues and pull requests
 
 ## Testing
 
-We use [pytest](https://pytest.org/) for testing. All new features and bug fixes should include tests.
+1. **Write Tests**
+   - Unit tests for all new features
+   - Integration tests for complex functionality
+   - Test edge cases and error conditions
+   - Use pytest for testing
 
-### Running Tests
+2. **Run Tests**
+   ```bash
+   # Run all tests
+   pytest
 
-Run all tests:
-```bash
-pytest
-```
+   # Run specific test file
+   pytest tests/test_feature.py
 
-Run tests with coverage report:
-```bash
-pytest --cov=modules
-```
+   # Run with coverage
+   pytest --cov=disco_musica
+   ```
 
-### Writing Tests
-
-When writing tests, follow these guidelines:
-
-1. Test files should be in the `tests/` directory.
-2. Test files should start with `test_`.
-3. Test functions should start with `test_`.
-4. Use descriptive names for tests.
-5. Each test should test one specific functionality.
-6. Use fixtures for setup and teardown.
+3. **Test Coverage**
+   - Maintain minimum 80% code coverage
+   - Add tests for bug fixes
+   - Test both success and failure cases
 
 ## Documentation
 
-We use Markdown for documentation. Documentation files are in the `docs/` directory.
+1. **Code Documentation**
+   - Add docstrings to all public functions
+   - Include type hints
+   - Provide usage examples
+   - Document exceptions
 
-When adding or updating features, please update the relevant documentation. This includes:
+2. **API Documentation**
+   - Update API documentation
+   - Add new endpoints
+   - Document parameters
+   - Include examples
 
-- Update the README.md if needed.
-- Update the user guide (docs/user_guide.md) for user-facing changes.
-- Update the developer guide (docs/developer_guide.md) for developer-facing changes.
-- Add or update API documentation for new or modified functions.
+3. **User Documentation**
+   - Update user guides
+   - Add new features
+   - Include screenshots
+   - Provide troubleshooting tips
 
-## Community
+## Release Process
 
-- Join our [Discord server](https://discord.gg/your-discord-invite) to chat with other contributors.
-- Subscribe to our [mailing list](mailto:your-mailing-list@example.com) for updates.
-- Follow us on [Twitter](https://twitter.com/your-twitter-handle).
+1. **Version Bumping**
+   - Follow semantic versioning
+   - Update version in setup.py
+   - Update CHANGELOG.md
+   - Tag releases
 
----
+2. **Release Checklist**
+   - Run all tests
+   - Check documentation
+   - Update dependencies
+   - Create release notes
 
-Thank you for contributing to Disco Musica! Your time and expertise help make this project better for everyone.
+3. **Deployment**
+   - Build distribution
+   - Upload to PyPI
+   - Update website
+   - Announce release
+
+## Questions?
+
+If you have any questions, please:
+1. Check the documentation
+2. Search existing issues
+3. Ask in discussions
+4. Contact maintainers
+
+Thank you for contributing to Disco Musica!

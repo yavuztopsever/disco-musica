@@ -1,0 +1,58 @@
+# Testing
+pytest>=6.2.5
+pytest-cov>=2.12.1
+pytest-mock>=3.6.1
+pytest-asyncio>=0.15.1
+pytest-xdist>=2.4.0
+hypothesis>=6.75.3
+
+# Code Quality
+black>=21.9b0
+isort>=5.12.0
+flake8>=3.9.2
+mypy>=0.910
+pylint>=2.11.1
+bandit>=1.7.0
+safety>=1.10.3
+
+# Documentation
+sphinx>=4.2.0
+sphinx-rtd-theme>=1.0.0
+sphinx-autodoc-typehints>=1.12.0
+sphinx-markdown-builder>=0.5.5
+mkdocs>=1.2.3
+mkdocs-material>=8.0.0
+mkdocstrings>=0.16.0
+
+# Development Tools
+pre-commit>=2.15.0
+jupyterlab>=3.2.0
+ipython>=7.28.0
+debugpy>=1.5.1
+
+# Type Checking
+types-requests>=2.25.0
+types-setuptools>=68.1.0.20230706
+types-PyYAML>=6.0.0
+types-python-dateutil>=2.8.0
+
+# CI/CD
+tox>=4.8.0
+coverage>=7.3.2
+codecov>=3.1.0
+
+# Notebooks
+jupyter>=1.0.0
+notebook>=7.0.6
+ipykernel>=6.25.1
+
+# Debugging
+ipdb>=0.13.9
+memory_profiler>=0.58.0
+line_profiler>=3.3.1
+py-spy>=0.3.8
+pdbpp>=0.10.3
+
+# Git hooks
+commitizen>=2.20.0
+conventional-commits>=1.0.1 

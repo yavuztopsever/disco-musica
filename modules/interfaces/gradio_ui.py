@@ -12,38 +12,200 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 import gradio as gr
+import librosa
+import librosa.display
+import matplotlib.pyplot as plt
 
 from modules.services.generation_service import get_generation_service
 from modules.services.model_service import get_model_service
 from modules.services.output_service import get_output_service
+from modules.core.visualization import create_audio_visualization, create_midi_visualization
 
 
-def create_ui():
-    """
-    Create and return a Gradio interface for Disco Musica.
+class WizardState:
+    """State management for the wizard interface."""
+    def __init__(self):
+        self.current_step = 0
+        self.user_inputs = {}
+
+    def next_step(self):
+        self.current_step += 1
+        return self.current_step
+
+    def prev_step(self):
+        self.current_step = max(0, self.current_step - 1)
+        return self.current_step
+
+    def save_input(self, key: str, value: any):
+        self.user_inputs[key] = value
+
+
+def create_wizard_interface() -> gr.Blocks:
+    """Create a wizard interface for new users."""
+    wizard_state = WizardState()
     
-    Returns:
-        Gradio Blocks interface.
-    """
+    with gr.Blocks() as wizard:
+        gr.Markdown("# Welcome to Disco Musica!")
+        gr.Markdown("Let's help you get started with AI music generation.")
+        
+        # Step indicators
+        with gr.Row():
+            step_indicators = [
+                gr.Markdown(f"Step {i+1}", visible=False) 
+                for i in range(4)
+            ]
+            step_indicators[0].visible = True
+        
+        # Step 1: Choose generation type
+        with gr.Group() as step1:
+            gr.Markdown("### Step 1: What would you like to create?")
+            generation_type = gr.Radio(
+                choices=["Text to Music", "Audio to Music", "MIDI to Music", "Image to Music"],
+                label="Generation Type"
+            )
+        
+        # Step 2: Input configuration
+        with gr.Group(visible=False) as step2:
+            gr.Markdown("### Step 2: Configure your input")
+            # Dynamic inputs based on generation type
+            text_config = gr.Textbox(
+                label="Text Description",
+                placeholder="Describe the music you want to create...",
+                visible=False
+            )
+            audio_config = gr.Audio(
+                label="Audio Input",
+                visible=False
+            )
+            midi_config = gr.File(
+                label="MIDI File",
+                visible=False
+            )
+            image_config = gr.Image(
+                label="Image Input",
+                visible=False
+            )
+        
+        # Step 3: Model and parameters
+        with gr.Group(visible=False) as step3:
+            gr.Markdown("### Step 3: Choose your settings")
+            with gr.Row():
+                model_dropdown = gr.Dropdown(
+                    label="Model",
+                    choices=["Basic", "Advanced", "Professional"],
+                    value="Basic"
+                )
+                duration_slider = gr.Slider(
+                    label="Duration (seconds)",
+                    minimum=5,
+                    maximum=60,
+                    value=30,
+                    step=5
+                )
+        
+        # Step 4: Generate and preview
+        with gr.Group(visible=False) as step4:
+            gr.Markdown("### Step 4: Generate and preview your music")
+            with gr.Row():
+                preview_audio = gr.Audio(label="Preview")
+                preview_viz = gr.Plot(label="Visualization")
+        
+        # Navigation buttons
+        with gr.Row():
+            back_btn = gr.Button("← Back", visible=False)
+            next_btn = gr.Button("Next →")
+            generate_btn = gr.Button("Generate!", visible=False)
+        
+        # Event handlers
+        def update_step2_visibility(gen_type):
+            wizard_state.save_input('generation_type', gen_type)
+            return {
+                text_config: gen_type == "Text to Music",
+                audio_config: gen_type == "Audio to Music",
+                midi_config: gen_type == "MIDI to Music",
+                image_config: gen_type == "Image to Music"
+            }
+        
+        generation_type.change(
+            update_step2_visibility,
+            inputs=[generation_type],
+            outputs=[text_config, audio_config, midi_config, image_config]
+        )
+        
+        def next_step():
+            current = wizard_state.next_step()
+            if current == 1:
+                return {
+                    step1: gr.update(visible=False),
+                    step2: gr.update(visible=True),
+                    back_btn: gr.update(visible=True)
+                }
+            elif current == 2:
+                return {
+                    step2: gr.update(visible=False),
+                    step3: gr.update(visible=True)
+                }
+            elif current == 3:
+                return {
+                    step3: gr.update(visible=False),
+                    step4: gr.update(visible=True),
+                    next_btn: gr.update(visible=False),
+                    generate_btn: gr.update(visible=True)
+                }
+        
+        next_btn.click(
+            next_step,
+            outputs=[step1, step2, step3, step4, back_btn, next_btn, generate_btn]
+        )
+        
+        def prev_step():
+            current = wizard_state.prev_step()
+            if current == 0:
+                return {
+                    step1: gr.update(visible=True),
+                    step2: gr.update(visible=False),
+                    back_btn: gr.update(visible=False)
+                }
+            elif current == 1:
+                return {
+                    step2: gr.update(visible=True),
+                    step3: gr.update(visible=False)
+                }
+            elif current == 2:
+                return {
+                    step3: gr.update(visible=True),
+                    step4: gr.update(visible=False),
+                    next_btn: gr.update(visible=True),
+                    generate_btn: gr.update(visible=False)
+                }
+        
+        back_btn.click(
+            prev_step,
+            outputs=[step1, step2, step3, step4, back_btn, next_btn, generate_btn]
+        )
+        
+        return wizard
+
+
+def create_advanced_interface() -> gr.Blocks:
+    """Create the advanced interface with all features."""
     # Get services
     generation_service = get_generation_service()
     model_service = get_model_service()
     output_service = get_output_service()
     
-    # Get available models for each task
-    text_models = [model["id"] for model in model_service.get_models_for_task("text_to_music")]
-    audio_models = [model["id"] for model in model_service.get_models_for_task("audio_to_music")]
-    midi_models = [model["id"] for model in model_service.get_models_for_task("midi_to_audio")]
+    # Get available models
+    text_models = model_service.get_models_for_task("text_to_music")
+    audio_models = model_service.get_models_for_task("audio_to_music")
+    midi_models = model_service.get_models_for_task("midi_to_audio")
+    image_models = model_service.get_models_for_task("image_to_music")
     
-    default_text_model = model_service.get_default_model_for_task("text_to_music")
-    default_audio_model = model_service.get_default_model_for_task("audio_to_music")
-    default_midi_model = model_service.get_default_model_for_task("midi_to_audio")
-    
-    with gr.Blocks(title="Disco Musica") as app:
+    with gr.Blocks(title="Disco Musica - Advanced Interface") as app:
         gr.Markdown("# Disco Musica")
-        gr.Markdown("An open-source multimodal AI music generation application.")
+        gr.Markdown("Advanced AI Music Generation Interface")
         
         with gr.Tabs():
+            # Text to Music tab
             with gr.TabItem("Text to Music"):
                 with gr.Row():
                     with gr.Column(scale=3):
@@ -53,15 +215,13 @@ def create_ui():
                             lines=3
                         )
                         
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                text_model_dropdown = gr.Dropdown(
+                        with gr.Accordion("Advanced Parameters"):
+                            with gr.Row():
+                                text_model = gr.Dropdown(
                                     label="Model",
-                                    choices=text_models,
-                                    value=default_text_model
+                                    choices=[m["id"] for m in text_models],
+                                    value=text_models[0]["id"] if text_models else None
                                 )
-                            
-                            with gr.Column(scale=1):
                                 text_duration = gr.Slider(
                                     label="Duration (seconds)",
                                     minimum=5,
@@ -69,9 +229,8 @@ def create_ui():
                                     value=30,
                                     step=5
                                 )
-                        
-                        with gr.Row():
-                            with gr.Column(scale=1):
+                            
+                            with gr.Row():
                                 text_temperature = gr.Slider(
                                     label="Temperature",
                                     minimum=0.0,
@@ -79,113 +238,46 @@ def create_ui():
                                     value=1.0,
                                     step=0.05
                                 )
-                            
-                            with gr.Column(scale=1):
                                 text_seed = gr.Number(
-                                    label="Seed (leave empty for random)",
+                                    label="Seed (optional)",
                                     precision=0
                                 )
                         
-                        text_generate_btn = gr.Button("Generate Music", variant="primary")
+                        text_generate_btn = gr.Button("Generate", variant="primary")
                     
                     with gr.Column(scale=2):
-                        text_output_audio = gr.Audio(
-                            label="Generated Audio",
-                            type="numpy"
-                        )
-                        text_save_btn = gr.Button("Save to Library")
-                
-                # Define generation function
-                def generate_from_text(prompt, model_id, duration, temperature, seed):
-                    try:
-                        # Convert seed to int or None
-                        if seed == "" or seed is None:
-                            seed_val = None
-                        else:
-                            seed_val = int(seed)
+                        text_output = gr.Audio(label="Generated Audio")
+                        text_viz = gr.Plot(label="Visualization")
                         
-                        # Generate music
-                        result = generation_service.generate_from_text(
-                            prompt=prompt,
-                            model_id=model_id,
-                            duration=duration,
-                            temperature=temperature,
-                            seed=seed_val,
-                            save_output=False
-                        )
-                        
-                        # Return audio data and sample rate
-                        return (result["sample_rate"], result["audio_data"])
-                    
-                    except Exception as e:
-                        return gr.Error(f"Generation failed: {str(e)}")
-                
-                # Define save function
-                def save_text_generation(audio_data):
-                    if audio_data is None:
-                        return "No audio to save"
-                    
-                    try:
-                        # Save to output service
-                        sr, audio = audio_data
-                        
-                        # Create temporary metadata
-                        metadata = {
-                            "generation_id": f"gradio_{int(time.time())}",
-                            "generation_type": "text_to_music",
-                            "created_at": time.time()
-                        }
-                        
-                        # Save to output service
-                        output_info = output_service.save_audio_output(
-                            audio_data=audio,
-                            sample_rate=sr,
-                            metadata=metadata,
-                            output_format="wav",
-                            visualization=True
-                        )
-                        
-                        return f"Saved to {output_info['path']}"
-                    
-                    except Exception as e:
-                        return f"Failed to save: {str(e)}"
-                
-                # Connect events
-                text_generate_btn.click(
-                    generate_from_text,
-                    inputs=[text_prompt, text_model_dropdown, text_duration, text_temperature, text_seed],
-                    outputs=text_output_audio
-                )
-                
-                text_save_btn.click(
-                    save_text_generation,
-                    inputs=text_output_audio,
-                    outputs=gr.Textbox()
-                )
+                        with gr.Row():
+                            text_save_btn = gr.Button("Save to Library")
+                            text_download_btn = gr.Button("Download")
             
+            # Audio to Music tab
             with gr.TabItem("Audio to Music"):
                 with gr.Row():
                     with gr.Column(scale=3):
-                        audio_input = gr.Audio(
-                            label="Input Audio",
-                            type="filepath"
-                        )
-                        
+                        audio_input = gr.Audio(label="Input Audio")
                         audio_prompt = gr.Textbox(
-                            label="Text Prompt (Optional)",
-                            placeholder="Guide the generation process with a text description...",
+                            label="Optional Text Prompt",
+                            placeholder="Guide the generation with text...",
                             lines=2
                         )
                         
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                audio_model_dropdown = gr.Dropdown(
+                        with gr.Accordion("Advanced Parameters"):
+                            with gr.Row():
+                                audio_model = gr.Dropdown(
                                     label="Model",
-                                    choices=audio_models,
-                                    value=default_audio_model
+                                    choices=[m["id"] for m in audio_models],
+                                    value=audio_models[0]["id"] if audio_models else None
+                                )
+                                audio_style = gr.Dropdown(
+                                    label="Style",
+                                    choices=["None", "Classical", "Jazz", "Rock", "Electronic"],
+                                    value="None"
                                 )
                             
-                            with gr.Column(scale=1):
+                            with gr.Row():
                                 audio_duration = gr.Slider(
                                     label="Duration (seconds)",
                                     minimum=5,
@@ -193,321 +285,183 @@ def create_ui():
                                     value=30,
                                     step=5
                                 )
-                        
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                audio_temperature = gr.Slider(
-                                    label="Temperature",
+                                audio_strength = gr.Slider(
+                                    label="Style Strength",
                                     minimum=0.0,
-                                    maximum=1.5,
-                                    value=1.0,
+                                    maximum=1.0,
+                                    value=0.5,
                                     step=0.05
                                 )
-                            
-                            with gr.Column(scale=1):
-                                audio_seed = gr.Number(
-                                    label="Seed (leave empty for random)",
-                                    precision=0
-                                )
                         
-                        audio_generate_btn = gr.Button("Generate Music", variant="primary")
+                        audio_generate_btn = gr.Button("Generate", variant="primary")
                     
                     with gr.Column(scale=2):
-                        audio_output_audio = gr.Audio(
-                            label="Generated Audio",
-                            type="numpy"
-                        )
-                        audio_save_btn = gr.Button("Save to Library")
-                
-                # Define generation function
-                def generate_from_audio(audio_path, prompt, model_id, duration, temperature, seed):
-                    if audio_path is None:
-                        return gr.Error("Please upload an audio file")
-                    
-                    try:
-                        # Convert seed to int or None
-                        if seed == "" or seed is None:
-                            seed_val = None
-                        else:
-                            seed_val = int(seed)
+                        audio_output = gr.Audio(label="Generated Audio")
+                        audio_viz = gr.Plot(label="Visualization")
                         
-                        # Generate music
-                        result = generation_service.generate_from_audio(
-                            audio_path=audio_path,
-                            prompt=prompt,
-                            model_id=model_id,
-                            duration=duration,
-                            temperature=temperature,
-                            seed=seed_val,
-                            save_output=False
-                        )
-                        
-                        # Return audio data and sample rate
-                        return (result["sample_rate"], result["audio_data"])
-                    
-                    except Exception as e:
-                        return gr.Error(f"Generation failed: {str(e)}")
-                
-                # Define save function
-                def save_audio_generation(audio_data):
-                    if audio_data is None:
-                        return "No audio to save"
-                    
-                    try:
-                        # Save to output service
-                        sr, audio = audio_data
-                        
-                        # Create temporary metadata
-                        metadata = {
-                            "generation_id": f"gradio_{int(time.time())}",
-                            "generation_type": "audio_to_music",
-                            "created_at": time.time()
-                        }
-                        
-                        # Save to output service
-                        output_info = output_service.save_audio_output(
-                            audio_data=audio,
-                            sample_rate=sr,
-                            metadata=metadata,
-                            output_format="wav",
-                            visualization=True
-                        )
-                        
-                        return f"Saved to {output_info['path']}"
-                    
-                    except Exception as e:
-                        return f"Failed to save: {str(e)}"
-                
-                # Connect events
-                audio_generate_btn.click(
-                    generate_from_audio,
-                    inputs=[audio_input, audio_prompt, audio_model_dropdown, audio_duration, audio_temperature, audio_seed],
-                    outputs=audio_output_audio
-                )
-                
-                audio_save_btn.click(
-                    save_audio_generation,
-                    inputs=audio_output_audio,
-                    outputs=gr.Textbox()
-                )
+                        with gr.Row():
+                            audio_save_btn = gr.Button("Save to Library")
+                            audio_download_btn = gr.Button("Download")
             
-            with gr.TabItem("MIDI to Audio"):
+            # MIDI to Music tab
+            with gr.TabItem("MIDI to Music"):
                 with gr.Row():
                     with gr.Column(scale=3):
-                        midi_input = gr.File(
-                            label="Input MIDI File",
-                            file_types=[".mid", ".midi"]
-                        )
+                        midi_input = gr.File(label="Input MIDI")
                         
-                        midi_prompt = gr.Textbox(
-                            label="Text Prompt (Optional)",
-                            placeholder="Guide the generation process with a text description...",
+                        with gr.Accordion("Advanced Parameters"):
+                            with gr.Row():
+                                midi_model = gr.Dropdown(
+                                    label="Model",
+                                    choices=[m["id"] for m in midi_models],
+                                    value=midi_models[0]["id"] if midi_models else None
+                                )
+                                midi_instrument = gr.Dropdown(
+                                    label="Primary Instrument",
+                                    choices=["Piano", "Guitar", "Strings", "Synth"],
+                                    value="Piano"
+                                )
+                            
+                            with gr.Row():
+                                midi_tempo = gr.Slider(
+                                    label="Tempo",
+                                    minimum=60,
+                                    maximum=200,
+                                    value=120,
+                                    step=1
+                                )
+                                midi_reverb = gr.Slider(
+                                    label="Reverb",
+                                    minimum=0.0,
+                                    maximum=1.0,
+                                    value=0.3,
+                                    step=0.05
+                                )
+                        
+                        midi_generate_btn = gr.Button("Generate", variant="primary")
+                    
+                    with gr.Column(scale=2):
+                        midi_output = gr.Audio(label="Generated Audio")
+                        midi_viz = gr.Plot(label="MIDI Visualization")
+                        
+                        with gr.Row():
+                            midi_save_btn = gr.Button("Save to Library")
+                            midi_download_btn = gr.Button("Download")
+            
+            # Image to Music tab
+            with gr.TabItem("Image to Music"):
+                with gr.Row():
+                    with gr.Column(scale=3):
+                        image_input = gr.Image(label="Input Image")
+                        image_prompt = gr.Textbox(
+                            label="Optional Text Prompt",
+                            placeholder="Guide the music generation with text...",
                             lines=2
                         )
                         
-                        instrument_prompt = gr.Textbox(
-                            label="Instrument Prompt",
-                            placeholder="Describe the instruments to use (e.g., 'piano and strings', 'jazz quartet')",
-                            lines=1,
-                            value="piano"
-                        )
-                        
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                midi_model_dropdown = gr.Dropdown(
+                        with gr.Accordion("Advanced Parameters"):
+                            with gr.Row():
+                                image_model = gr.Dropdown(
                                     label="Model",
-                                    choices=midi_models,
-                                    value=default_midi_model
+                                    choices=[m["id"] for m in image_models],
+                                    value=image_models[0]["id"] if image_models else None
+                                )
+                                image_mood = gr.Dropdown(
+                                    label="Mood",
+                                    choices=["Auto", "Happy", "Sad", "Energetic", "Calm"],
+                                    value="Auto"
                                 )
                             
-                            with gr.Column(scale=1):
-                                midi_duration = gr.Slider(
+                            with gr.Row():
+                                image_duration = gr.Slider(
                                     label="Duration (seconds)",
                                     minimum=5,
                                     maximum=120,
                                     value=30,
                                     step=5
                                 )
-                        
-                        with gr.Row():
-                            with gr.Column(scale=1):
-                                midi_temperature = gr.Slider(
-                                    label="Temperature",
+                                image_complexity = gr.Slider(
+                                    label="Complexity",
                                     minimum=0.0,
-                                    maximum=1.5,
-                                    value=1.0,
+                                    maximum=1.0,
+                                    value=0.5,
                                     step=0.05
                                 )
-                            
-                            with gr.Column(scale=1):
-                                midi_seed = gr.Number(
-                                    label="Seed (leave empty for random)",
-                                    precision=0
-                                )
                         
-                        midi_generate_btn = gr.Button("Generate Music", variant="primary")
+                        image_generate_btn = gr.Button("Generate", variant="primary")
                     
                     with gr.Column(scale=2):
-                        midi_output_audio = gr.Audio(
-                            label="Generated Audio",
-                            type="numpy"
+                        image_output = gr.Audio(label="Generated Audio")
+                        image_viz = gr.Plot(label="Audio Visualization")
+                        
+                        with gr.Row():
+                            image_save_btn = gr.Button("Save to Library")
+                            image_download_btn = gr.Button("Download")
+            
+            # Library tab
+            with gr.TabItem("Library"):
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        library_list = gr.Dataframe(
+                            headers=["Name", "Type", "Duration", "Created"],
+                            label="Your Generated Music"
                         )
-                        midi_save_btn = gr.Button("Save to Library")
-                
-                # Define generation function
-                def generate_from_midi(midi_path, prompt, instrument_prompt, model_id, duration, temperature, seed):
-                    if midi_path is None:
-                        return gr.Error("Please upload a MIDI file")
+                        with gr.Row():
+                            library_refresh_btn = gr.Button("Refresh")
+                            library_delete_btn = gr.Button("Delete Selected")
                     
-                    try:
-                        # Convert seed to int or None
-                        if seed == "" or seed is None:
-                            seed_val = None
-                        else:
-                            seed_val = int(seed)
-                        
-                        # Generate music
-                        result = generation_service.generate_from_midi(
-                            midi_path=midi_path,
-                            prompt=prompt,
-                            instrument_prompt=instrument_prompt,
-                            model_id=model_id,
-                            duration=duration,
-                            temperature=temperature,
-                            seed=seed_val,
-                            save_output=False
-                        )
-                        
-                        # Return audio data and sample rate
-                        return (result["sample_rate"], result["audio_data"])
-                    
-                    except Exception as e:
-                        return gr.Error(f"Generation failed: {str(e)}")
-                
-                # Define save function
-                def save_midi_generation(audio_data):
-                    if audio_data is None:
-                        return "No audio to save"
-                    
-                    try:
-                        # Save to output service
-                        sr, audio = audio_data
-                        
-                        # Create temporary metadata
-                        metadata = {
-                            "generation_id": f"gradio_{int(time.time())}",
-                            "generation_type": "midi_to_audio",
-                            "created_at": time.time()
-                        }
-                        
-                        # Save to output service
-                        output_info = output_service.save_audio_output(
-                            audio_data=audio,
-                            sample_rate=sr,
-                            metadata=metadata,
-                            output_format="wav",
-                            visualization=True
-                        )
-                        
-                        return f"Saved to {output_info['path']}"
-                    
-                    except Exception as e:
-                        return f"Failed to save: {str(e)}"
-                
-                # Connect events
-                midi_generate_btn.click(
-                    generate_from_midi,
-                    inputs=[midi_input, midi_prompt, instrument_prompt, midi_model_dropdown, midi_duration, midi_temperature, midi_seed],
-                    outputs=midi_output_audio
-                )
-                
-                midi_save_btn.click(
-                    save_midi_generation,
-                    inputs=midi_output_audio,
-                    outputs=gr.Textbox()
-                )
+                    with gr.Column(scale=3):
+                        library_preview = gr.Audio(label="Preview")
+                        library_viz = gr.Plot(label="Visualization")
+                        library_metadata = gr.JSON(label="Metadata")
         
-        # Add a tab for library access
-        with gr.TabItem("Library"):
-            gr.Markdown("### Generated Music Library")
-            
-            with gr.Row():
-                refresh_library_btn = gr.Button("Refresh Library")
-                
-            with gr.Row():
-                with gr.Column():
-                    library_output = gr.Dataframe(
-                        headers=["ID", "Type", "Timestamp", "Path"],
-                        label="Generated Outputs"
-                    )
-            
-            with gr.Row():
-                with gr.Column():
-                    selected_output_id = gr.Textbox(label="Selected Output ID")
-                    load_output_btn = gr.Button("Load Selected Output")
-                
-                with gr.Column():
-                    library_audio = gr.Audio(label="Selected Output")
-            
-            # Library functions
-            def refresh_library():
-                outputs = output_service.list_outputs()
-                
-                # Format for dataframe
-                rows = []
-                for output in outputs:
-                    rows.append([
-                        output.get("id", ""),
-                        output.get("type", ""),
-                        output.get("timestamp", ""),
-                        output.get("path", "")
-                    ])
-                
-                return rows
-            
-            def load_output(output_id):
-                if not output_id:
-                    return gr.Error("Please select an output ID")
-                
-                try:
-                    output = output_service.load_output(output_id)
-                    
-                    if output is None:
-                        return gr.Error(f"Output {output_id} not found")
-                    
-                    if "audio_data" not in output:
-                        return gr.Error(f"No audio data found for output {output_id}")
-                    
-                    # Return audio data
-                    return (output.get("sample_rate", 44100), output["audio_data"])
-                
-                except Exception as e:
-                    return gr.Error(f"Failed to load output: {str(e)}")
-            
-            # Connect events
-            refresh_library_btn.click(
-                refresh_library,
-                outputs=library_output
-            )
-            
-            load_output_btn.click(
-                load_output,
-                inputs=selected_output_id,
-                outputs=library_audio
-            )
-    
-    return app
+        return app
 
 
-def launch_ui(debug=False):
-    """
-    Create and launch the Gradio web interface.
-    
-    Args:
-        debug: Whether to run in debug mode.
-    """
+def create_ui() -> gr.Blocks:
+    """Create the main UI with both wizard and advanced interfaces."""
+    with gr.Blocks(title="Disco Musica") as main_app:
+        # Mode selection
+        with gr.Row():
+            mode_select = gr.Radio(
+                choices=["Wizard Mode", "Advanced Mode"],
+                value="Wizard Mode",
+                label="Interface Mode"
+            )
+        
+        # Wizard interface
+        wizard_interface = create_wizard_interface()
+        wizard_interface.visible = True
+        
+        # Advanced interface
+        advanced_interface = create_advanced_interface()
+        advanced_interface.visible = False
+        
+        # Mode switching logic
+        def switch_mode(mode):
+            return {
+                wizard_interface: gr.update(visible=mode == "Wizard Mode"),
+                advanced_interface: gr.update(visible=mode == "Advanced Mode")
+            }
+        
+        mode_select.change(
+            switch_mode,
+            inputs=[mode_select],
+            outputs=[wizard_interface, advanced_interface]
+        )
+        
+        return main_app
+
+
+def launch_ui(debug: bool = False):
+    """Launch the Disco Musica UI."""
     app = create_ui()
-    app.launch(share=False, inbrowser=True, debug=debug)
+    app.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        debug=debug,
+        share=True
+    )
 
 
 if __name__ == "__main__":
