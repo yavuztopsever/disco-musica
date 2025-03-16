@@ -1,0 +1,355 @@
+---
+description: existing github and huggingface models to built on
+globs: 
+alwaysApply: false
+---
+---
+description: existing github and huggingface models to built on
+globs: 
+alwaysApply: false
+---
+
+# Disco-Musica: AI Model Development Guide
+
+## Table of Contents
+1. [Music Source Separation (MSS) Model: HT-Demucs](mdc:#1-music-source-separation-mss-model-ht-demucs)
+2. [Audio Generation Model](mdc:#2-audio-generation-model)
+3. [Production Effect Prediction Model](mdc:#3-production-effect-prediction-model)
+4. [Mastering Model](mdc:#4-mastering-model)
+5. [Logic Pro Plugin Integration](mdc:#5-logic-pro-plugin-integration)
+
+## 1. Music Source Separation (MSS) Model: HT-Demucs
+
+### Model Architecture
+
+#### Encoder
+- **Convolutional Layers**
+  - Downsampling via strided convolutions or max-pooling
+  - Hierarchical feature extraction
+  - Residual connections
+  - Normalization layers (BatchNorm)
+- **Transformer Encoder**
+  - Self-attention mechanisms
+  - Cross-attention mechanisms
+  - Layer normalization
+  - Feed-forward networks
+
+#### Decoder
+- Transposed convolutional layers with upsampling
+- Skip connections from encoder
+- Output layers with activation functions (sigmoid/tanh)
+
+### Processing Pipeline
+
+1. **Audio Input and Preprocessing**
+   - Convert to 44.1kHz, stereo
+   - Apply STFT for spectrogram representation
+   - Normalize spectrogram data
+   - Optional direct waveform processing
+
+2. **Encoding and Feature Extraction**
+   - Convolutional encoder processing
+   - Multi-resolution feature map extraction
+
+3. **Transformer Processing**
+   - Feature map sequence reshaping
+   - Transformer encoder layer application
+   - Temporal and spectral dependency capture
+
+4. **Decoding and Stem Reconstruction**
+   - Convolutional decoder processing
+   - Stem reconstruction from feature maps
+   - Inverse STFT conversion
+
+5. **Output and Post-processing**
+   - Individual stem file export (WAV)
+   - Optional noise reduction
+
+### Implementation Cases
+
+1. **Studio-Quality Mixes**
+   - Optimal performance on high-quality recordings
+   - Clear instrument separation
+
+2. **Live Recordings**
+   - Background noise considerations
+   - Instrument bleed handling
+   - Fine-tuning recommendations
+
+3. **Complex Arrangements**
+   - Dense mix handling
+   - Model size optimization
+   - Fine-tuning strategies
+
+4. **Low Quality Input**
+   - Quality preservation limitations
+   - Preprocessing recommendations
+
+### Training Specifications
+
+- **Loss Function**: SDR loss (Signal-to-Distortion Ratio)
+- **Optimizer**: AdamW
+- **Learning Rate**: 1e-4 to 1e-3
+- **Data Augmentation**:
+  - Time stretching
+  - Pitch shifting
+  - Mixing augmentation
+
+## 2. Audio Generation Model
+
+### Stable Audio 2.0 Architecture
+
+#### Core Components
+- **Diffusion Process**
+  - Forward diffusion (Gaussian noise addition)
+  - Reverse diffusion (noise denoising)
+  - Audio-to-audio capability
+  - Text prompt conditioning
+
+### MusicGen Architecture
+
+#### Core Components
+- **Transformer Language Model**
+  - Discrete audio token prediction
+  - Text prompt conditioning
+  - Melody conditioning
+
+### Processing Pipeline
+
+1. **Input Encoding**
+   - Stable Audio 2.0: VQ-VAE audio encoding, T5 text encoding
+   - MusicGen: Text and melody prompt encoding
+
+2. **Generation Process**
+   - Stable Audio 2.0: Reverse diffusion
+   - MusicGen: Autoregressive token generation
+
+3. **Decoding and Output**
+   - Waveform generation
+   - Post-processing (noise reduction, equalization)
+
+### Implementation Cases
+
+1. **Timbre Preservation**
+   - Audio-to-audio transformation
+   - Existing instrument stem modification
+
+2. **Text-to-Music Generation**
+   - New musical idea generation
+   - Style-based composition
+
+3. **Melody-Guided Generation**
+   - Melody variation generation
+   - Theme development
+
+4. **Style Transfer**
+   - Genre/style modification
+   - Audio sample transformation
+
+### Training Specifications
+
+- **Loss Function**: 
+  - Stable Audio 2.0: Diffusion loss
+  - MusicGen: Cross-entropy loss
+- **Optimizer**: AdamW
+- **Learning Rate**: 1e-5 to 1e-4
+- **Data Augmentation**:
+  - Time stretching
+  - Pitch shifting
+  - Noise addition
+
+## 3. Production Effect Prediction Model
+
+### Model Architecture
+
+#### Core Components
+- Feature Extraction Network
+- Effect Parameter Prediction Network
+- Sequence Model
+
+### Processing Pipeline
+
+1. **Audio Feature Extraction**
+   - Spectral features (MFCCs, spectral centroid)
+   - Temporal features
+   - Instrument-specific features
+
+2. **Effect Parameter Prediction**
+   - Feature network processing
+   - Plugin chain parameter prediction
+
+3. **Effect Application**
+   - Logic Pro plugin integration
+   - Effect chain variation generation
+
+4. **Evaluation and Refinement**
+   - Quality assessment
+   - Parameter refinement
+
+### Implementation Cases
+
+1. **Instrument-Specific Effects**
+   - Electric guitar optimization
+   - Vocal processing
+   - Drum treatment
+
+2. **Genre-Specific Effects**
+   - Genre-appropriate effect chains
+   - Style-based processing
+
+3. **Sound Design**
+   - Creative effect chain generation
+   - Experimental processing
+
+4. **Automated Mixing**
+   - Multi-track processing
+   - Chain optimization
+
+### Training Specifications
+
+- **Loss Function**: 
+  - MSE for parameter prediction
+  - Perceptual loss for audio quality
+- **Optimizer**: AdamW
+- **Learning Rate**: 1e-4 to 1e-3
+- **Data Augmentation**:
+  - Noise addition
+  - Time stretching
+
+## 4. Mastering Model
+
+### Model Architecture
+
+#### Core Components
+- **Mix Analysis Network**
+  - Convolutional/recurrent layers
+  - Feature extraction
+  - Mastering-specific analysis
+
+- **Mastering Parameter Prediction Network**
+  - Parameter regression
+  - Plugin-specific prediction
+  - Genre adaptation
+
+### Processing Pipeline
+
+1. **Mix Analysis**
+   - Loudness measurement (LUFS)
+   - Dynamic range analysis
+   - Spectral balance assessment
+   - Reference track comparison
+
+2. **Parameter Generation**
+   - Feature network processing
+   - Multi-platform parameter sets
+   - Chain optimization
+
+3. **Mastering Application**
+   - Logic Pro plugin integration
+   - Chain processing
+   - Interactive control
+
+4. **Evaluation and Refinement**
+   - Quality metrics
+   - Subjective testing
+   - Parameter adjustment
+
+### Implementation Cases
+
+1. **Genre-Specific Mastering**
+   - Genre-appropriate processing
+   - Style-based optimization
+
+2. **Loudness Normalization**
+   - Platform-specific targets
+   - Automatic level adjustment
+
+3. **Dynamic Range Control**
+   - Range optimization
+   - Listener experience enhancement
+
+4. **Streaming Optimization**
+   - Platform-specific mastering
+   - Format optimization
+
+### Training Specifications
+
+- **Loss Function**: 
+  - MSE for parameters
+  - Perceptual loss
+  - Loudness metric loss
+- **Optimizer**: AdamW
+- **Learning Rate**: 1e-4 to 1e-3
+- **Data Augmentation**:
+  - Noise addition
+  - Time stretching
+  - Mix variation
+
+## 5. Logic Pro Plugin Integration
+
+### Plugin Architecture
+
+#### Core Components
+- Stock Features Only
+- External AI Processing
+- Metal Framework Integration
+- Separation of Concerns
+
+### Communication Protocol
+
+- **Format**: JSON
+- **Versioning**: Backward compatibility
+- **Channels**:
+  - TCP/IP sockets
+  - File exchange
+  - Heartbeat mechanism
+
+### Plugin Components
+
+1. **MIDI Manipulation Module**
+   - Scripter implementation
+   - Real-time processing
+   - Pattern application
+
+2. **Audio Effect Control Module**
+   - Stock plugin manipulation
+   - Parameter automation
+   - Chain management
+
+3. **Project Modification Module**
+   - Track management
+   - Setting application
+   - Project configuration
+
+4. **User Interface Component**
+   - Control panel
+   - Status indication
+   - Parameter adjustment
+
+### Integration Features
+
+1. **Project Management**
+   - Data extraction
+   - Backend synchronization
+
+2. **Project Macro Quantizing**
+   - MIDI quantization
+   - Flex Time integration
+
+3. **Track Generation**
+   - MIDI import
+   - Instrument setup
+   - Hierarchy organization
+
+4. **Vocal Processing**
+   - Flex Pitch integration
+   - Parameter application
+
+### Performance Optimization
+
+- **Asynchronous Communication**
+- **Processing Queue Management**
+- **Background Task Handling**
+- **Resource Management**
+- **CPU Usage Control**
+- **Error Handling**

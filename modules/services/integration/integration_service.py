@@ -15,6 +15,7 @@ from ..generation_service import GenerationService
 from ..model_service import ModelService
 from ..resource_service import ResourceService
 from ..output_service import OutputService
+from ..project_service import ProjectService
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,8 @@ class IntegrationService:
         generation_service: GenerationService,
         model_service: ModelService,
         resource_service: ResourceService,
-        output_service: OutputService
+        output_service: OutputService,
+        project_service: ProjectService
     ):
         """Initialize the integration service.
         
@@ -41,11 +43,13 @@ class IntegrationService:
             model_service: Service for model management.
             resource_service: Service for resource management.
             output_service: Service for output management.
+            project_service: Service for project management.
         """
         self.generation_service = generation_service
         self.model_service = model_service
         self.resource_service = resource_service
         self.output_service = output_service
+        self.project_service = project_service
         self.active_connections: List[WebSocket] = []
         self.logger = logging.getLogger(__name__)
         
@@ -133,14 +137,14 @@ class IntegrationService:
             Project information.
         """
         project_path = params.get("project_path")
-        
+        if not project_path:
+            raise ValidationError("Project path is required")
+            
         # Create or update project profile
-        project_id = await self.resource_service.create_or_update_project(
-            project_path=project_path
-        )
+        project_id = await self.resource_service.create_or_update_project(project_path)
         
-        # Get project information
-        project = await self.resource_service.get_project(project_id)
+        # Update project profile with latest analysis
+        project = await self.project_service.update_project_profile(project_id)
         
         return {
             "project_id": project_id,

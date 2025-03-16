@@ -100,136 +100,95 @@ The following flow diagrams illustrate the key operational sequences in the Disc
 4. Makes these resources available to all other system components
 
 ### Resource Management Flows
-
-#### Flow #0.1: Profile Updating
-
-**Purpose**: Extract and analyze project data to maintain up-to-date project profiles
-
-**Input**: Logic project file (.logicx)
-
-**Process**:
-1. **Data Extraction**
-   - Parse the Logic project file to extract:
-     - Project metadata (BPM, key, time signature)
-     - MIDI data (notes, velocity, timing)
-     - Audio data (waveforms, transients)
-     - Lyrics data
-     - Channel information (instrument types, effects)
-
-2. **Feature Extraction and Preprocessing**
-   - **Audio Processing**
-     - Extract acoustic features (MFCCs, spectral centroid, chroma features)
-     - Remove silence and normalize volume
-     - Convert to frequency domain representations when needed
-   - **MIDI Processing**
-     - Quantize notes and normalize velocity
-     - Convert to piano-roll representation for analysis
-     - Extract chord progressions and harmonic structures
-   - **Lyrics Processing**
-     - Clean text (remove punctuation, lowercase)
-     - Tokenize text for analysis
-     - Perform sentiment analysis on lyrics content
-   - **Project Context**
-     - Calculate average track volume levels
-     - Determine track density and arrangement complexity
-
-3. **Musical Analysis**
-   - **Chord/Harmonic Analysis**
-     - Use Librosa and Music21 for chord detection
-     - Extract harmonic progression patterns
-     - Identify key changes and modulations
-   - **Genre/Style Classification**
-     - Apply pre-trained models for genre detection
-     - Analyze emotional content based on musical features
-     - Identify stylistic elements and production techniques
-
-4. **Database Update**
-   - Store extracted data and analysis results
-   - Update project profile with new information
-   - Link related assets and generated resources
-
-**Output**: Updated project profile in the database
-
-**Technical Implementation**:
-- **Core Libraries**: Librosa, Music21, PyTorch
-- **ML Models**: Genre classification, emotion detection, style analysis
-- **Database Integration**: PostgreSQL or MongoDB
-
-```mermaid
 graph TD
-    A[Logic Project Input] --> B{Parse Logic Project};
-    B --> C[Extract Project Data];
-    C --> D[Audio Data Processing];
-    C --> E[MIDI Data Processing];
-    C --> F[Lyrics Data Processing];
-    C --> G[Project Context Calculation];
-    D --> H[Chord/Harmonic Analysis];
-    E --> H;
-    F --> I[Genre/Emotion/Style Analysis];
-    G --> I;
-    H --> J[Update Project Profile Database];
-    I --> J;
-```
+    A[Logic Project Input] --> B[Export WAV and MIDI to Root Folder];
+    B --> C[Create New Project Directory];
+    C --> D[Organize WAV and MIDI into Project Directory];
+    D --> E{Choose Flow: Profile Update or Import};
+    E -- Profile Update --> F1[Extract Project Data (from WAV/MIDI)];
+    E -- Project Import --> G1[Create Project Entry in DB];
+    G1 --> F1;
+    F1 --> H1[Audio Data Processing];
+    F1 --> I1[MIDI Data Processing];
+    H1 --> J1[Chord/Harmonic Analysis];
+    I1 --> J1;
+    J1 --> K1[Genre/Emotion/Style Analysis];
+    K1 --> L1[Store Analysis Results/Update Project Profile];
+    L1 --> M1[End];
+ Flow Descriptions:
 
-#### Flow #0.2: Project Importing
+Flow #0.1: Profile Updating
 
-**Purpose**: Import a new project, extract its data, and create a structured project environment
+Purpose: Extract and analyze project data to maintain up-to-date project profiles.
 
-**Input**: Logic project file (.logicx)
+Input: A folder in the root directory containing WAV and MIDI files.
 
-**Process**:
-1. **Database Entry Creation**
-   - Generate unique project identifier
-   - Create database entry with basic metadata
-   - Initialize project status and relationships
+Process:
 
-2. **Data Extraction** (same as Flow #0.1)
-   - Extract project metadata, MIDI, audio, lyrics, and channel information
+Export WAV and MIDI: User exports all audio tracks as WAV files and MIDI data as MIDI files into a designated folder in the root directory.
+Create New Project Directory: The application creates a new, empty directory to organize the project.
+Organize Files: The application moves and organizes the exported WAV and MIDI files from the root directory folder into the newly created project directory, ensuring proper file naming and structure.
+Data Extraction (from WAV/MIDI):
+Extract project metadata (BPM, key, time signature - if possible from file naming or user input)
+MIDI data (notes, velocity, timing) from MIDI files.
+Audio data (waveforms, transients) from WAV files.
+Feature Extraction and Preprocessing:
+Audio Processing:
+Extract acoustic features (MFCCs, spectral centroid, chroma features).
+Remove silence and normalize volume.
+Convert to frequency domain representations when needed.
+MIDI Processing:
+Quantize notes and normalize velocity.
+Convert to piano-roll representation for analysis.
+Extract chord progressions and harmonic structures.
+Project Context:
+Calculate average track volume levels.
+Determine track density and arrangement complexity.
+Musical Analysis:
+Chord/Harmonic Analysis:
+Use Librosa and Music21 for chord detection.
+Extract harmonic progression patterns.
+Identify key changes and modulations.
+Genre/Style Classification:
+Apply pre-trained models for genre detection.
+Analyze emotional content based on musical features.
+Identify stylistic elements and production techniques.
+Database Update:
+Store extracted data and analysis results.
+Update project profile with new information.
+Link related assets and generated resources.
+Output: Updated project profile in the database.
 
-3. **Feature Extraction and Preprocessing** (same as Flow #0.1)
-   - Process audio, MIDI, lyrics, and project context
+Modified Flow #0.2: Project Importing
 
-4. **Project Directory Structure**
-   - Create standardized project directory
-   - Organize extracted files by type and purpose
-   - Create subdirectories for analysis results and generated content
+Purpose: Import a new project, extract its data, and create a structured project environment.
 
-5. **Storage and Organization**
-   - Store original and processed files
-   - Create references between database and file system
-   - Generate metadata indexes for quick access
+Input: A folder in the root directory containing WAV and MIDI files.
 
-6. **Initial Analysis**
-   - Perform chord/harmonic analysis
-   - Complete genre/emotion/style classification
-   - Store analysis results in database and project directory
+Process:
 
-**Output**: Complete project profile in database and organized project directory
-
-**Technical Implementation**:
-- **File Operations**: Python's os and pathlib
-- **Data Processing**: NumPy, Pandas, Librosa
-- **Database Operations**: SQLAlchemy or PyMongo
-
-```mermaid
-graph TD
-    A[Logic Project Input] --> B[Create Project Entry in DB];
-    B --> C{Parse Logic Project};
-    C --> D[Extract Project Data];
-    D --> E[Audio Data Processing];
-    D --> F[MIDI Data Processing];
-    D --> G[Lyrics Data Processing];
-    D --> H[Project Context Calculation];
-    E --> I[Create Project Directory];
-    F --> I;
-    G --> I;
-    H --> I;
-    I --> J[Store Data];
-    J --> K[Chord/Harmonic Analysis];
-    J --> L[Genre/Emotion/Style Analysis];
-    K --> M[Store Analysis Results];
-    L --> M;
-```
+Export WAV and MIDI: User exports all audio tracks as WAV files and MIDI data as MIDI files into a designated folder in the root directory.
+Create New Project Directory: The application creates a new, empty directory to organize the project.
+Organize Files: The application moves and organizes the exported WAV and MIDI files from the root directory folder into the newly created project directory, ensuring proper file naming and structure.
+Database Entry Creation:
+Generate unique project identifier.
+Create database entry with basic metadata (if available from file names, or user input).
+Initialize project status and relationships.
+Data Extraction (from WAV/MIDI):
+Extract project metadata (BPM, key, time signature - if possible from file naming or user input)
+MIDI data (notes, velocity, timing) from MIDI files.
+Audio data (waveforms, transients) from WAV files.
+Feature Extraction and Preprocessing:
+Process audio, MIDI, and project context.
+Storage and Organization:
+Store original and processed files.
+Create references between database and file system.
+Generate metadata indexes for quick access.
+Initial Analysis:
+Perform chord/harmonic analysis.
+Complete genre/emotion/style classification.
+Store analysis results in database and project directory.
+Output: Complete project profile in database and organized project directory.
 
 ### Audio Processing Flows
 

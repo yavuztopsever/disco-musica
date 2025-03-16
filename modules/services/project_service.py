@@ -20,6 +20,7 @@ from ..core.exceptions.base_exceptions import (
     ValidationError,
     ResourceNotFoundError
 )
+from ..services.project_analysis_service import ProjectAnalysisService
 
 
 class ProjectService:
@@ -1337,30 +1338,30 @@ class ProjectService:
         if not project_path or not os.path.exists(project_path):
             raise ProcessingError(f"Project file not found: {project_path}")
             
-        # Extract project data
-        project_data = await self._extract_project_data(project_path)
-        
-        # Update project with extracted data
-        project.musical_properties.update(project_data.get("musical_properties", {}))
+        # Export and organize project files
+        exported_files = await self.export_project_files(project_path)
+        organized_files = await self.organize_project_files(project_id, exported_files)
         
         # Process tracks
         track_resources = []
-        for track_data in project_data.get("tracks", []):
+        for track_name, file_path in organized_files.items():
+            track_data = {
+                "name": track_name,
+                "type": "midi" if file_path.endswith('.mid') else "audio",
+                "file_path": file_path
+            }
             track_resource = await self._process_track(track_data, project_id)
             track_resources.append(track_resource.resource_id)
-            
+        
         # Update project tracks
         project.tracks = track_resources
         
-        # Apply musical analysis
-        analysis_results = await self._analyze_project(project, track_resources)
-        project.analysis_results = analysis_results
+        # Perform analysis using ProjectAnalysisService
+        analysis_service = ProjectAnalysisService(self)
+        analysis_results = await analysis_service.analyze_project(project, track_resources)
         
-        # Update modification timestamp
-        project.modification_timestamp = datetime.utcnow()
-        
-        # Save updated project
-        await self.project_repository.save(project)
+        # Update project with analysis results
+        await analysis_service._update_project_with_analysis(project, analysis_results)
         
         return project
         
@@ -1669,22 +1670,16 @@ class ProjectService:
             # Generate project ID
             project_id = f"project_{uuid.uuid4().hex}"
             
+            # Export project files
+            exported_files = await self.export_project_files(project_path)
+            
             # Create project directory structure
             project_dir = os.path.join(self.base_path, project_id)
             os.makedirs(project_dir, exist_ok=True)
             
-            # Create subdirectories
-            subdirs = [
-                'audio',  # For extracted audio files
-                'midi',   # For extracted MIDI files
-                'analysis',  # For analysis results
-                'features',  # For extracted features
-                'generated'  # For generated content
-            ]
+            # Organize exported files
+            organized_files = await self.organize_project_files(project_id, exported_files)
             
-            for subdir in subdirs:
-                os.makedirs(os.path.join(project_dir, subdir), exist_ok=True)
-                
             # Extract project data
             project_data = await self._extract_project_data(project_path)
             
@@ -1709,14 +1704,12 @@ class ProjectService:
             
             # Process tracks
             track_resources = []
-            for track_data in project_data.get("tracks", []):
-                # Copy track files to project directory
-                new_file_path = await self._copy_track_file(
-                    track_data.get("file_path"),
-                    project_dir,
-                    track_data.get("type")
-                )
-                track_data["file_path"] = new_file_path
+            for track_name, file_path in organized_files.items():
+                track_data = {
+                    "name": track_name,
+                    "type": "midi" if file_path.endswith('.mid') else "audio",
+                    "file_path": file_path
+                }
                 
                 # Process track
                 track_resource = await self._process_track(track_data, project_id)
@@ -1728,6 +1721,10 @@ class ProjectService:
             # Perform initial analysis
             analysis_results = await self._analyze_project(project, track_resources)
             project.analysis_results = analysis_results
+            
+            # Analyze musical style
+            style_results = await self.analyze_musical_style(project, track_resources)
+            project.musical_properties.update(style_results)
             
             # Save final project state
             await self.project_repository.save(project)
@@ -2436,3 +2433,195 @@ class ProjectService:
             
         except Exception as e:
             raise ProcessingError(f"Failed to create pitch correction map: {str(e)}") 
+
+    async def export_project_files(self, project_path: str) -> Dict[str, str]:
+        """Export WAV and MIDI files from Logic Pro project.
+        
+        Args:
+            project_path: Path to Logic Pro project file.
+            
+        Returns:
+            Dictionary mapping track names to exported file paths.
+            
+        Raises:
+            ProcessingError: If export fails.
+        """
+        try:
+            # Use Logic Pro scripting to export files
+            script = f"""
+                tell application "Logic Pro"
+                    set proj to open "{project_path}"
+                    
+                    -- Create export directory
+                    set export_dir to (path to desktop as text) & "disco_musica_export_" & (random number from 1000 to 9999)
+                    do shell script "mkdir " & quoted form of POSIX path of export_dir
+                    
+                    -- Export each track
+                    repeat with t in tracks of proj
+                        set track_name to name of t
+                        set wav_path to export_dir & "/" & track_name & ".wav"
+                        set midi_path to export_dir & "/" & track_name & ".mid"
+                        
+                        -- Export WAV
+                        export t as audio file wav_path
+                        
+                        -- Export MIDI if track has MIDI data
+                        if class of t is MIDI track then
+                            export t as MIDI file midi_path
+                        end if
+                    end repeat
+                    
+                    return export_dir
+                end tell
+            """
+            
+            result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True)
+            if result.returncode != 0:
+                raise ProcessingError(f"Failed to export project files: {result.stderr}")
+                
+            export_dir = result.stdout.strip()
+            
+            # Get list of exported files
+            files = {}
+            for file_path in Path(export_dir).glob("*"):
+                if file_path.suffix in ['.wav', '.mid']:
+                    files[file_path.stem] = str(file_path)
+                    
+            return files
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to export project files: {str(e)}")
+
+    async def organize_project_files(
+        self,
+        project_id: str,
+        exported_files: Dict[str, str]
+    ) -> Dict[str, str]:
+        """Organize exported files into project directory structure.
+        
+        Args:
+            project_id: Project ID.
+            exported_files: Dictionary mapping track names to file paths.
+            
+        Returns:
+            Dictionary mapping track names to organized file paths.
+            
+        Raises:
+            ProcessingError: If organization fails.
+        """
+        try:
+            project_dir = self.base_path / "projects" / project_id
+            
+            # Create subdirectories
+            audio_dir = project_dir / "audio"
+            midi_dir = project_dir / "midi"
+            audio_dir.mkdir(parents=True, exist_ok=True)
+            midi_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Organize files
+            organized_files = {}
+            for track_name, file_path in exported_files.items():
+                file_path = Path(file_path)
+                if file_path.suffix == '.wav':
+                    target_dir = audio_dir
+                else:
+                    target_dir = midi_dir
+                    
+                # Generate unique filename
+                new_filename = f"{track_name}_{uuid.uuid4().hex}{file_path.suffix}"
+                target_path = target_dir / new_filename
+                
+                # Copy file
+                shutil.copy2(file_path, target_path)
+                organized_files[track_name] = str(target_path)
+                
+            return organized_files
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to organize project files: {str(e)}")
+
+    async def analyze_musical_style(
+        self,
+        project: ProjectResource,
+        track_resources: List[str]
+    ) -> Dict[str, Any]:
+        """Analyze musical style, genre, and emotion.
+        
+        Args:
+            project: Project resource.
+            track_resources: List of track resource IDs.
+            
+        Returns:
+            Dictionary containing analysis results.
+            
+        Raises:
+            ProcessingError: If analysis fails.
+        """
+        try:
+            # Load pre-trained models
+            genre_model = await self.model_service.load_model("genre_classifier")
+            emotion_model = await self.model_service.load_model("emotion_classifier")
+            
+            # Analyze each track
+            style_results = {
+                "genres": [],
+                "emotions": [],
+                "style_tags": []
+            }
+            
+            for track_id in track_resources:
+                track = await self.track_repository.find_by_id(track_id)
+                if not track:
+                    continue
+                    
+                # Extract features
+                features = await self._extract_track_features(track)
+                
+                # Get genre prediction
+                genre_pred = await genre_model.predict(features)
+                style_results["genres"].extend(genre_pred)
+                
+                # Get emotion prediction
+                emotion_pred = await emotion_model.predict(features)
+                style_results["emotions"].extend(emotion_pred)
+                
+            # Deduplicate and sort results
+            style_results["genres"] = sorted(set(style_results["genres"]))
+            style_results["emotions"] = sorted(set(style_results["emotions"]))
+            
+            # Generate style tags based on analysis
+            style_results["style_tags"] = self._generate_style_tags(style_results)
+            
+            return style_results
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to analyze musical style: {str(e)}")
+
+    def _generate_style_tags(self, style_results: Dict[str, Any]) -> List[str]:
+        """Generate style tags based on analysis results.
+        
+        Args:
+            style_results: Dictionary containing analysis results.
+            
+        Returns:
+            List of style tags.
+        """
+        tags = []
+        
+        # Add genre-based tags
+        for genre in style_results["genres"]:
+            tags.append(genre)
+            
+        # Add emotion-based tags
+        for emotion in style_results["emotions"]:
+            tags.append(emotion)
+            
+        # Add production style tags based on analysis
+        if "electronic" in style_results["genres"]:
+            tags.extend(["synthesizer-heavy", "modern"])
+        if "rock" in style_results["genres"]:
+            tags.extend(["guitar-driven", "energetic"])
+        if "jazz" in style_results["genres"]:
+            tags.extend(["improvisational", "complex"])
+            
+        return sorted(set(tags))
