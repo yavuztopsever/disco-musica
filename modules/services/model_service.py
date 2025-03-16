@@ -7,6 +7,7 @@ This module provides services for model selection, management, and registration.
 import os
 import json
 import datetime
+import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
@@ -752,6 +753,403 @@ class ModelService:
             
         # Clear cache
         self._model_cache.clear()
+
+    async def train_generation_model(
+        self,
+        training_config: Dict[str, Any],
+        model_id: Optional[str] = None
+    ) -> ModelResource:
+        """Train or fine-tune generation model.
+        
+        Args:
+            training_config: Training configuration:
+                - data_path: Path to training data
+                - model_type: Type of model to train
+                - hyperparameters: Training hyperparameters
+                - compute_config: Compute configuration
+            model_id: Optional model ID for fine-tuning.
+            
+        Returns:
+            Trained model resource.
+            
+        Raises:
+            ResourceNotFoundError: If model_id provided but not found.
+            ProcessingError: If training fails.
+        """
+        try:
+            # Prepare training data
+            train_data = await self._prepare_training_data(
+                training_config["data_path"],
+                training_config["model_type"]
+            )
+            
+            # Get or create model
+            if model_id:
+                model = await self.model_repository.find_by_id(model_id)
+                if not model:
+                    raise ResourceNotFoundError(f"Model {model_id} not found")
+            else:
+                model = await self._create_generation_model(training_config)
+                
+            # Train model
+            trained_model = await self.training_service.train_model(
+                model=model,
+                train_data=train_data,
+                hyperparameters=training_config["hyperparameters"],
+                compute_config=training_config["compute_config"]
+            )
+            
+            # Save trained model
+            await self.model_repository.save(trained_model)
+            
+            return trained_model
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to train generation model: {str(e)}")
+            
+    async def train_production_model(
+        self,
+        training_config: Dict[str, Any],
+        model_id: Optional[str] = None
+    ) -> ModelResource:
+        """Train or fine-tune production model.
+        
+        Args:
+            training_config: Training configuration:
+                - data_path: Path to training data
+                - effect_types: Types of effects to model
+                - hyperparameters: Training hyperparameters
+                - compute_config: Compute configuration
+            model_id: Optional model ID for fine-tuning.
+            
+        Returns:
+            Trained model resource.
+            
+        Raises:
+            ResourceNotFoundError: If model_id provided but not found.
+            ProcessingError: If training fails.
+        """
+        try:
+            # Prepare training data
+            train_data = await self._prepare_effect_training_data(
+                training_config["data_path"],
+                training_config["effect_types"]
+            )
+            
+            # Get or create model
+            if model_id:
+                model = await self.model_repository.find_by_id(model_id)
+                if not model:
+                    raise ResourceNotFoundError(f"Model {model_id} not found")
+            else:
+                model = await self._create_production_model(training_config)
+                
+            # Train model
+            trained_model = await self.training_service.train_model(
+                model=model,
+                train_data=train_data,
+                hyperparameters=training_config["hyperparameters"],
+                compute_config=training_config["compute_config"]
+            )
+            
+            # Save trained model
+            await self.model_repository.save(trained_model)
+            
+            return trained_model
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to train production model: {str(e)}")
+            
+    async def train_mastering_model(
+        self,
+        training_config: Dict[str, Any],
+        model_id: Optional[str] = None
+    ) -> ModelResource:
+        """Train or fine-tune mastering model.
+        
+        Args:
+            training_config: Training configuration:
+                - data_path: Path to training data
+                - target_metrics: Target audio quality metrics
+                - hyperparameters: Training hyperparameters
+                - compute_config: Compute configuration
+            model_id: Optional model ID for fine-tuning.
+            
+        Returns:
+            Trained model resource.
+            
+        Raises:
+            ResourceNotFoundError: If model_id provided but not found.
+            ProcessingError: If training fails.
+        """
+        try:
+            # Prepare training data
+            train_data = await self._prepare_mastering_training_data(
+                training_config["data_path"],
+                training_config["target_metrics"]
+            )
+            
+            # Get or create model
+            if model_id:
+                model = await self.model_repository.find_by_id(model_id)
+                if not model:
+                    raise ResourceNotFoundError(f"Model {model_id} not found")
+            else:
+                model = await self._create_mastering_model(training_config)
+                
+            # Train model
+            trained_model = await self.training_service.train_model(
+                model=model,
+                train_data=train_data,
+                hyperparameters=training_config["hyperparameters"],
+                compute_config=training_config["compute_config"]
+            )
+            
+            # Save trained model
+            await self.model_repository.save(trained_model)
+            
+            return trained_model
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to train mastering model: {str(e)}")
+            
+    async def _prepare_training_data(
+        self,
+        data_path: str,
+        model_type: str
+    ) -> Dict[str, Any]:
+        """Prepare training data for generation model.
+        
+        Args:
+            data_path: Path to training data.
+            model_type: Type of model to train.
+            
+        Returns:
+            Processed training data.
+            
+        Raises:
+            ProcessingError: If preparation fails.
+        """
+        try:
+            # Load and validate data
+            raw_data = await self._load_training_data(data_path)
+            
+            # Process based on model type
+            if model_type == "midi":
+                processed_data = await self._process_midi_training_data(raw_data)
+            elif model_type == "audio":
+                processed_data = await self._process_audio_training_data(raw_data)
+            else:
+                raise ValueError(f"Unsupported model type: {model_type}")
+                
+            return processed_data
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to prepare training data: {str(e)}")
+            
+    async def _prepare_effect_training_data(
+        self,
+        data_path: str,
+        effect_types: List[str]
+    ) -> Dict[str, Any]:
+        """Prepare training data for production model.
+        
+        Args:
+            data_path: Path to training data.
+            effect_types: Types of effects to model.
+            
+        Returns:
+            Processed training data.
+            
+        Raises:
+            ProcessingError: If preparation fails.
+        """
+        try:
+            # Load and validate data
+            raw_data = await self._load_training_data(data_path)
+            
+            # Extract effect parameters and audio features
+            processed_data = {
+                "input_features": [],
+                "effect_parameters": [],
+                "output_features": []
+            }
+            
+            for sample in raw_data:
+                # Process input audio
+                input_features = await self._extract_audio_features(
+                    sample["input_audio"]
+                )
+                
+                # Extract effect parameters
+                effect_params = await self._extract_effect_parameters(
+                    sample["effect_chain"],
+                    effect_types
+                )
+                
+                # Process output audio
+                output_features = await self._extract_audio_features(
+                    sample["output_audio"]
+                )
+                
+                processed_data["input_features"].append(input_features)
+                processed_data["effect_parameters"].append(effect_params)
+                processed_data["output_features"].append(output_features)
+                
+            return processed_data
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to prepare effect training data: {str(e)}")
+            
+    async def _prepare_mastering_training_data(
+        self,
+        data_path: str,
+        target_metrics: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Prepare training data for mastering model.
+        
+        Args:
+            data_path: Path to training data.
+            target_metrics: Target audio quality metrics.
+            
+        Returns:
+            Processed training data.
+            
+        Raises:
+            ProcessingError: If preparation fails.
+        """
+        try:
+            # Load and validate data
+            raw_data = await self._load_training_data(data_path)
+            
+            # Process mastering pairs
+            processed_data = {
+                "input_features": [],
+                "target_features": [],
+                "quality_metrics": []
+            }
+            
+            for sample in raw_data:
+                # Process input mix
+                input_features = await self._extract_mastering_features(
+                    sample["input_mix"]
+                )
+                
+                # Process reference master
+                target_features = await self._extract_mastering_features(
+                    sample["reference_master"]
+                )
+                
+                # Calculate quality metrics
+                quality_metrics = await self._calculate_quality_metrics(
+                    sample["reference_master"],
+                    target_metrics
+                )
+                
+                processed_data["input_features"].append(input_features)
+                processed_data["target_features"].append(target_features)
+                processed_data["quality_metrics"].append(quality_metrics)
+                
+            return processed_data
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to prepare mastering training data: {str(e)}")
+            
+    async def _create_generation_model(
+        self,
+        config: Dict[str, Any]
+    ) -> ModelResource:
+        """Create new generation model.
+        
+        Args:
+            config: Model configuration.
+            
+        Returns:
+            Created model resource.
+            
+        Raises:
+            ProcessingError: If creation fails.
+        """
+        try:
+            model = ModelResource(
+                resource_id=f"model_{uuid.uuid4().hex}",
+                resource_type="generation_model",
+                model_info={
+                    "type": config["model_type"],
+                    "architecture": config.get("architecture", "transformer"),
+                    "parameters": config.get("model_parameters", {})
+                }
+            )
+            
+            await self.model_repository.save(model)
+            return model
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to create generation model: {str(e)}")
+            
+    async def _create_production_model(
+        self,
+        config: Dict[str, Any]
+    ) -> ModelResource:
+        """Create new production model.
+        
+        Args:
+            config: Model configuration.
+            
+        Returns:
+            Created model resource.
+            
+        Raises:
+            ProcessingError: If creation fails.
+        """
+        try:
+            model = ModelResource(
+                resource_id=f"model_{uuid.uuid4().hex}",
+                resource_type="production_model",
+                model_info={
+                    "effect_types": config["effect_types"],
+                    "architecture": config.get("architecture", "neural_network"),
+                    "parameters": config.get("model_parameters", {})
+                }
+            )
+            
+            await self.model_repository.save(model)
+            return model
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to create production model: {str(e)}")
+            
+    async def _create_mastering_model(
+        self,
+        config: Dict[str, Any]
+    ) -> ModelResource:
+        """Create new mastering model.
+        
+        Args:
+            config: Model configuration.
+            
+        Returns:
+            Created model resource.
+            
+        Raises:
+            ProcessingError: If creation fails.
+        """
+        try:
+            model = ModelResource(
+                resource_id=f"model_{uuid.uuid4().hex}",
+                resource_type="mastering_model",
+                model_info={
+                    "target_metrics": config["target_metrics"],
+                    "architecture": config.get("architecture", "neural_network"),
+                    "parameters": config.get("model_parameters", {})
+                }
+            )
+            
+            await self.model_repository.save(model)
+            return model
+            
+        except Exception as e:
+            raise ProcessingError(f"Failed to create mastering model: {str(e)}")
 
 
 # Create a global model service instance

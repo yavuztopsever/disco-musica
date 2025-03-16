@@ -10,6 +10,7 @@ import datetime
 import uuid
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union, Any
+import json
 
 import numpy as np
 import asyncio
@@ -30,6 +31,12 @@ from modules.exceptions.base_exceptions import (
     ValidationError,
     ResourceNotFoundError
 )
+from ..core.processors.audio_processor import AudioProcessor
+from ..core.processors.midi_processor import MIDIProcessor
+from ..core.processors.text_processor import TextProcessor
+from ..services.project_service import ProjectService
+from ..services.output_service import OutputService
+from ..services.model_service import ModelService
 
 
 class GenerationService:
@@ -43,24 +50,29 @@ class GenerationService:
     
     def __init__(
         self,
-        resource_manager: ResourceManager,
-        model_registry: ModelRegistry,
-        processor_manager: ProcessorManager,
-        output_dir: Union[str, Path]
+        base_path: Path,
+        project_service: ProjectService,
+        output_service: OutputService,
+        model_service: ModelService
     ):
         """
         Initialize the GenerationService.
         
         Args:
-            resource_manager: Resource manager instance.
-            model_registry: Model registry instance.
-            processor_manager: Processor manager instance.
-            output_dir: Directory for generation outputs.
+            base_path: Base path for file operations.
+            project_service: Project service instance.
+            output_service: Output service instance.
+            model_service: Model service instance.
         """
-        self.resource_manager = resource_manager
-        self.model_registry = model_registry
-        self.processor_manager = processor_manager
-        self.output_dir = Path(output_dir)
+        self.base_path = base_path
+        self.project_service = project_service
+        self.output_service = output_service
+        self.model_service = model_service
+        
+        # Initialize processors
+        self.audio_processor = AudioProcessor()
+        self.midi_processor = MIDIProcessor()
+        self.text_processor = TextProcessor()
         
         # Set up logging
         self.logger = logging.getLogger(__name__)
@@ -654,7 +666,7 @@ class GenerationService:
                     
                 # Generate variation
                 output = await model_instance.predict({
-                    variation_type: source,
+                    "variation_type": source,
                     **config or {}
                 })
                 
@@ -872,6 +884,306 @@ class GenerationService:
             "created_at": generation.created_at.isoformat(),
             "updated_at": generation.updated_at.isoformat()
         }
+
+    def quantize_project(
+        self,
+        project_id: str,
+        target_bpm: Optional[float] = None,
+        quantization_grid: str = "1/4",
+        transient_sensitivity: float = 0.5
+    ) -> Dict[str, Any]:
+        """Quantize project to standardize timing and alignment.
+        
+        Args:
+            project_id: Project ID.
+            target_bpm: Target BPM for standardization. If None, uses project's BPM.
+            quantization_grid: Grid size for quantization (e.g., "1/4", "1/8", "1/16").
+            transient_sensitivity: Sensitivity for audio transient detection (0-1).
+            
+        Returns:
+            Dictionary containing quantization results.
+        """
+        try:
+            # Get project
+            project = self.project_service.get_project(project_id)
+            if not project:
+                raise ResourceNotFoundError(f"Project {project_id} not found")
+                
+            # Get project resources
+            resources = self.project_service.list_project_resources(project_id)
+            
+            # Initialize results
+            results = {
+                "project_id": project_id,
+                "timestamp": datetime.utcnow().isoformat(),
+                "target_bpm": target_bpm or project.get("bpm", 120),
+                "quantization_grid": quantization_grid,
+                "transient_sensitivity": transient_sensitivity,
+                "results": {}
+            }
+            
+            # Quantize MIDI tracks
+            midi_tracks = [r for r in resources if r["type"] == "midi"]
+            if midi_tracks:
+                results["results"]["midi_quantization"] = self._quantize_midi_tracks(
+                    project_id, midi_tracks, results["target_bpm"], quantization_grid
+                )
+                
+            # Quantize audio tracks
+            audio_tracks = [r for r in resources if r["type"] == "audio"]
+            if audio_tracks:
+                results["results"]["audio_quantization"] = self._quantize_audio_tracks(
+                    project_id, audio_tracks, results["target_bpm"], transient_sensitivity
+                )
+                
+            # Update project timeline
+            self._update_project_timeline(project_id, results)
+            
+            # Save quantization results
+            results_path = self.base_path / "projects" / project_id / "analysis" / "quantization_results.json"
+            results_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(results_path, "w") as f:
+                json.dump(results, f, indent=2)
+                
+            return results
+            
+        except Exception as e:
+            raise ProcessingError(f"Error quantizing project: {e}")
+            
+    def _quantize_midi_tracks(
+        self,
+        project_id: str,
+        midi_tracks: List[Dict[str, Any]],
+        target_bpm: float,
+        quantization_grid: str
+    ) -> Dict[str, Any]:
+        """Quantize MIDI tracks to grid.
+        
+        Args:
+            project_id: Project ID.
+            midi_tracks: List of MIDI track resources.
+            target_bpm: Target BPM.
+            quantization_grid: Grid size for quantization.
+            
+        Returns:
+            Dictionary containing MIDI quantization results.
+        """
+        results = {
+            "tracks": [],
+            "overall": {
+                "total_notes_quantized": 0,
+                "average_offset": 0.0,
+                "max_offset": 0.0
+            }
+        }
+        
+        grid_size = self._parse_grid_size(quantization_grid, target_bpm)
+        
+        for track in midi_tracks:
+            if "notes" in track and "timing" in track:
+                notes = track["notes"]
+                times = track["timing"]
+                quantized_times = []
+                offsets = []
+                
+                for time in times:
+                    grid_pos = round(time / grid_size) * grid_size
+                    quantized_times.append(grid_pos)
+                    offset = abs(time - grid_pos)
+                    offsets.append(offset)
+                
+                track["timing"] = quantized_times
+                track_path = self.base_path / "projects" / project_id / "tracks" / f"{track['id']}.json"
+                
+                with open(track_path, "w") as f:
+                    json.dump(track, f, indent=2)
+                
+                track_results = {
+                    "track_id": track["id"],
+                    "name": track["name"],
+                    "notes_quantized": len(notes),
+                    "average_offset": sum(offsets) / len(offsets),
+                    "max_offset": max(offsets)
+                }
+                results["tracks"].append(track_results)
+                
+                results["overall"]["total_notes_quantized"] += len(notes)
+                results["overall"]["average_offset"] += track_results["average_offset"]
+                results["overall"]["max_offset"] = max(
+                    results["overall"]["max_offset"],
+                    track_results["max_offset"]
+                )
+        
+        num_tracks = len(midi_tracks)
+        if num_tracks > 0:
+            results["overall"]["average_offset"] /= num_tracks
+        
+        return results
+        
+    def _quantize_audio_tracks(
+        self,
+        project_id: str,
+        audio_tracks: List[Dict[str, Any]],
+        target_bpm: float,
+        transient_sensitivity: float
+    ) -> Dict[str, Any]:
+        """Quantize audio tracks using transient detection.
+        
+        Args:
+            project_id: Project ID.
+            audio_tracks: List of audio track resources.
+            target_bpm: Target BPM.
+            transient_sensitivity: Sensitivity for transient detection.
+            
+        Returns:
+            Dictionary containing audio quantization results.
+        """
+        results = {
+            "tracks": [],
+            "overall": {
+                "total_transients_detected": 0,
+                "average_offset": 0.0,
+                "max_offset": 0.0
+            }
+        }
+        
+        grid_size = self._parse_grid_size("1/16", target_bpm)
+        
+        for track in audio_tracks:
+            if "file_path" in track:
+                audio_path = self.base_path / track["file_path"]
+                if audio_path.exists():
+                    transients = self._detect_transients(audio_path, sensitivity=transient_sensitivity)
+                    quantized_transients = []
+                    offsets = []
+                    
+                    for time in transients:
+                        grid_pos = round(time / grid_size) * grid_size
+                        quantized_transients.append(grid_pos)
+                        offset = abs(time - grid_pos)
+                        offsets.append(offset)
+                    
+                    track["transients"] = quantized_transients
+                    track_path = self.base_path / "projects" / project_id / "tracks" / f"{track['id']}.json"
+                    
+                    with open(track_path, "w") as f:
+                        json.dump(track, f, indent=2)
+                    
+                    track_results = {
+                        "track_id": track["id"],
+                        "name": track["name"],
+                        "transients_detected": len(transients),
+                        "transients_quantized": len(quantized_transients),
+                        "average_offset": sum(offsets) / len(offsets) if offsets else 0,
+                        "max_offset": max(offsets) if offsets else 0
+                    }
+                    results["tracks"].append(track_results)
+                    
+                    results["overall"]["total_transients_detected"] += len(transients)
+                    results["overall"]["average_offset"] += track_results["average_offset"]
+                    results["overall"]["max_offset"] = max(
+                        results["overall"]["max_offset"],
+                        track_results["max_offset"]
+                    )
+        
+        num_tracks = len(audio_tracks)
+        if num_tracks > 0:
+            results["overall"]["average_offset"] /= num_tracks
+        
+        return results
+        
+    def _parse_grid_size(
+        self,
+        grid_size: str,
+        bpm: float
+    ) -> float:
+        """Parse grid size string into seconds.
+        
+        Args:
+            grid_size: Grid size string (e.g., "1/4", "1/8", "1/16").
+            bpm: Beats per minute.
+            
+        Returns:
+            Grid size in seconds.
+        """
+        try:
+            # Parse fraction
+            num, denom = map(int, grid_size.split("/"))
+            
+            # Calculate seconds per beat
+            seconds_per_beat = 60 / bpm
+            
+            # Calculate grid size in seconds
+            return seconds_per_beat * (num / denom)
+            
+        except (ValueError, ZeroDivisionError):
+            return 0.25  # Default to quarter note
+            
+    def _detect_transients(
+        self,
+        audio_path: Path,
+        sensitivity: float = 0.5
+    ) -> List[float]:
+        """Detect transients in audio file.
+        
+        Args:
+            audio_path: Path to audio file.
+            sensitivity: Detection sensitivity (0-1).
+            
+        Returns:
+            List of transient times in seconds.
+        """
+        # Load audio file
+        audio = self.audio_processor.load_audio(audio_path)
+        
+        # Calculate onset strength
+        onset_env = self.audio_processor.calculate_onset_strength(audio)
+        
+        # Find peaks in onset strength
+        peaks = self.audio_processor.find_peaks(onset_env, sensitivity)
+        
+        # Convert peak indices to times
+        times = self.audio_processor.frames_to_time(peaks, audio)
+        
+        return times
+        
+    def _update_project_timeline(
+        self,
+        project_id: str,
+        quantization_results: Dict[str, Any]
+    ) -> None:
+        """Update project timeline with quantization results.
+        
+        Args:
+            project_id: Project ID.
+            quantization_results: Quantization results.
+        """
+        # Get project
+        project = self.project_service.get_project(project_id)
+        if not project:
+            return
+            
+        # Update project BPM
+        project["bpm"] = quantization_results["target_bpm"]
+        
+        # Update track timings
+        for track_result in quantization_results["results"].get("midi_quantization", {}).get("tracks", []):
+            track_id = track_result["track_id"]
+            track = self.project_service.get_project_resource(project_id, track_id)
+            if track:
+                track["quantized"] = True
+                track["quantization_grid"] = quantization_results["quantization_grid"]
+                
+        for track_result in quantization_results["results"].get("audio_quantization", {}).get("tracks", []):
+            track_id = track_result["track_id"]
+            track = self.project_service.get_project_resource(project_id, track_id)
+            if track:
+                track["quantized"] = True
+                track["transients"] = track_result["transients_quantized"]
+                
+        # Save updated project
+        self.project_service.update_project(project_id, project)
 
 
 # Create a global generation service instance
