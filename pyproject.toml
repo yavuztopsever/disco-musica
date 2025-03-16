@@ -28,10 +28,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/disco-musica"
-Repository = "https://github.com/yourusername/disco-musica.git"
-Documentation = "https://disco-musica.readthedocs.io/"
-Issues = "https://github.com/yourusername/disco-musica/issues"
+Repository = "https://github.com/yavuztopsever/disco-musica.git"
 
 [project.scripts]
 disco-musica = "disco_musica.main:main"

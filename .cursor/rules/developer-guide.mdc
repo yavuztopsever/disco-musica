@@ -1,392 +1,2024 @@
 ---
-description: developer-guide
+description: This developer guide provides comprehensive technical instructions for building, extending, and maintaining the system.
 globs: 
 alwaysApply: false
 ---
-# Disco Musica Developer Guide
+# Disco-Musica Developer Guide
 
 ## Table of Contents
 
-1. [Development Environment](mdc:#development-environment)
-2. [Project Structure](mdc:#project-structure)
-3. [Architecture](mdc:#architecture)
-4. [Modules](mdc:#modules)
-5. [Development Workflow](mdc:#development-workflow)
-6. [Testing](mdc:#testing)
-7. [Documentation](mdc:#documentation)
-8. [Contribution Guidelines](mdc:#contribution-guidelines)
-9. [Code Style](mdc:#code-style)
-10. [Resources](mdc:#resources)
+- [Introduction](mdc:#introduction)
+- [System Architecture](mdc:#system-architecture)
+- [Development Environment Setup](mdc:#development-environment-setup)
+- [Core Components Implementation](mdc:#core-components-implementation)
+- [Module Development Guidelines](mdc:#module-development-guidelines)
+- [Data Architecture and Management](mdc:#data-architecture-and-management)
+- [Model Development and Training](mdc:#model-development-and-training)
+- [Integration Points](mdc:#integration-points)
+- [Testing Framework](mdc:#testing-framework)
+- [Performance Optimization](mdc:#performance-optimization)
+- [Deployment Strategies](mdc:#deployment-strategies)
+- [Documentation Standards](mdc:#documentation-standards)
+- [Version Control and CI/CD](mdc:#version-control-and-cicd)
+- [Appendix: Detailed Flow Implementations](mdc:#appendix-detailed-flow-implementations)
 
-## Development Environment
+## Introduction
+
+Disco-Musica is a sophisticated AI-powered music generation and production system designed to assist musicians, producers, and creators. 
+
+### Key Design Principles
+
+1. **Modularity**: All components must be self-contained with well-defined interfaces
+2. **Data Efficiency**: Preserve and reuse all generated data across the system
+3. **Universal Access**: Provide standardized APIs for all services and data
+4. **Scalability**: Design for horizontal scaling with increasing data and users
+5. **Interoperability**: Maintain consistent interfaces between components
+
+### Technology Stack
+
+- **Primary Language**: Python 3.8+ for core logic and ML components
+- **Machine Learning**: PyTorch (primary), TensorFlow (supported)
+- **Audio Processing**: Librosa, PyDub, TorchAudio
+- **MIDI Processing**: Music21, Mido
+- **Database**: MongoDB (document store), PostgreSQL (relational), Pinecone (vector)
+- **API Layer**: FastAPI for service endpoints
+- **UI Components**: Gradio for web interfaces, PyQt for desktop
+- **Deployment**: Docker containers, Kubernetes orchestration
+
+## System Architecture
+
+The architecture follows a hybrid design combining layered architecture with service-oriented components.
+
+### Architecture Layers
+
+1. **Data Foundation Layer**
+   - Universal project repository
+   - Resource tracking and indexing
+   - Versioning and caching systems
+
+2. **Service Layer**
+   - Generation Service: Creates musical content from inputs
+   - Model Service: Manages model lifecycle
+   - Output Service: Handles result processing
+   - Resource Service: Coordinates access to resources
+   - Integration Service: Manages external connections
+
+3. **Application Layer**
+   - User interfaces
+   - Workflow orchestration
+   - Session management
+
+### Core Components Diagram
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     Application Layer                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │    Web UI   │  │ Desktop UI  │  │ Integration Clients │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+└───────────────────────────|──────────────────────────────────┘
+                           │
+┌──────────────────────────|──────────────────────────────────┐
+│                     Service Layer                           │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │ Generation  │  │    Model    │  │       Output        │ │
+│  │  Service    │  │   Service   │  │      Service        │ │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘ │
+│  ┌─────────────┐  ┌─────────────────────────────────────┐  │
+│  │  Resource   │  │          Integration                │  │
+│  │  Service    │  │           Service                   │  │
+│  └─────────────┘  └─────────────────────────────────────┘  │
+└───────────────────────────|──────────────────────────────────┘
+                           │
+┌──────────────────────────|──────────────────────────────────┐
+│                Data Foundation Layer                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ Document DB │  │ Relational  │  │    Vector DB        │  │
+│  │ (MongoDB)   │  │     DB      │  │    (Pinecone)       │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │               File Storage System                      │ │
+│  └────────────────────────────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow Pattern
+
+All operations in the system follow this consistent pattern:
+
+1. **Resource Acquisition**: Identify and access required inputs
+2. **Processing Pipeline**: Apply transformations through configured stages
+3. **Result Persistence**: Store all outputs in the universal data layer
+4. **Notification**: Alert dependent components of new/updated resources
+
+## Development Environment Setup
 
 ### Prerequisites
 
 - Python 3.8+
-- PyTorch or TensorFlow
-- Audio processing libraries (Librosa, PyDub)
-- MIDI processing libraries (Music21)
-- Git
+- CUDA Toolkit 11.6+ (for GPU training)
+- Node.js 14+ (for UI development)
+- Docker and Docker Compose
+- Git LFS for large file storage
 
-### Setup
+### Environment Configuration
 
-1. Fork the repository on GitHub.
-2. Clone your forked repository:
+1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourusername/disco-musica.git
+   git clone https://github.com/your-org/disco-musica.git
    cd disco-musica
    ```
 
-3. Create and activate a virtual environment:
+2. **Create a virtual environment**:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # On macOS/Linux
-   # or
-   venv\Scripts\activate  # On Windows
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
-4. Install dependencies:
+3. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
+   pip install -r requirements-dev.txt  # Development dependencies
    ```
 
-5. Install development dependencies:
+4. **Configure local environment**:
    ```bash
-   pip install -r requirements-dev.txt
+   cp .env.example .env
+   # Edit .env with your local configuration
    ```
 
-## Project Structure
+5. **Install pre-commit hooks**:
+   ```bash
+   pre-commit install
+   ```
 
-The project is organized into the following directories:
+6. **Start development services**:
+   ```bash
+   docker-compose up -d mongodb postgres
+   ```
+
+### Development Tools
+
+- **VS Code** with Python, Pylance, and Docker extensions (recommended)
+- **PyCharm Professional** with Docker integration (alternative)
+- **Jupyter Lab** for notebook-based experimentation
+
+### Code Style and Standards
+
+- Follow **PEP 8** with a line length of 100 characters
+- Use **Black** code formatter with default settings
+- Use **isort** for import sorting
+- Use **mypy** for static type checking
+- Document all public APIs using **Google docstring** format
+
+## Core Components Implementation
+
+### Module Structure
+
+The Disco-Musica codebase follows a modular structure:
 
 ```
-disco-musica/
-├── data/
-│   ├── raw/                  # Raw, unprocessed data
-│   ├── processed/            # Preprocessed data
-│   ├── datasets/             # Prepared datasets for training and inference
-├── models/
-│   ├── pretrained/           # Pre-trained models from external sources
-│   ├── finetuned/            # User-finetuned models
-├── modules/
-│   ├── data_ingestion.py     # Data ingestion module
-│   ├── preprocessing.py      # Data preprocessing module
-│   ├── model_selection.py    # Model selection module
-│   ├── training.py           # Training module
-│   ├── inference.py          # Inference module
-│   ├── ui.py                 # User interface module
-│   ├── output_management.py   # Output management module
-│   ├── audio_processing.py   # Audio processing module
-│   ├── midi_processing.py    # MIDI processing module
-├── utils/
-│   ├── google_colab_utils.py # Utilities for Google Colab integration
-│   ├── logging_utils.py      # Logging utilities
-│   ├── cloud_utils.py        # Cloud platform utilities
-├── notebooks/
-│   ├── training_colab.ipynb  # Google Colab training notebook
-│   ├── inference_demo.ipynb  # Inference demo notebook
-├── tests/
-│   ├── test_data_ingestion.py# Tests for data ingestion module
-│   ├── test_preprocessing.py # Tests for data preprocessing module
-│   ├── ...                   # Other test files
-├── docs/
-│   ├── documentation.md      # Main documentation file
-│   ├── user_guide.md         # User guide
-│   ├── developer_guide.md    # Developer guide
-│   ├── api_docs/             # API documentation
-├── requirements.txt          # Python dependencies
-├── setup.py                  # Installation script
-├── LICENSE                   # License file
-├── README.md                 # Project README
+modules/
+├── core/                # Core functionality and base classes
+│   ├── __init__.py
+│   ├── base_model.py    # Base class for all models
+│   ├── audio_processor.py
+│   └── ...
+├── interfaces/          # User interface implementations
+│   ├── __init__.py
+│   ├── gradio_ui.py     # Web UI using Gradio
+│   └── ...
+├── services/            # Service implementations
+│   ├── __init__.py
+│   ├── generation_service.py
+│   └── ...
+└── ...                  # Other modules
 ```
 
-## Architecture
+### Core Module Implementation
 
-Disco Musica employs a modular architecture to promote flexibility and maintainability. The application is divided into several modules, each responsible for a specific functionality.
+Each core module must implement:
 
-### System Architecture
+1. **Base classes** with clear interfaces and type hints
+2. **Factory methods** for component instantiation
+3. **Configuration validation** using Pydantic models
+4. **Error handling** with custom exception hierarchy
+5. **Logging** using the structured logger
 
-#### Local Application (User's Machine)
+Example base model implementation:
 
-- **User Interface (UI) Layer**: Responsible for user interaction, input handling, and output display.
-- **Inference Engine Layer**: Executes music generation based on user input and selected models.
-- **Data Preprocessing Layer**: Handles data ingestion, preprocessing, and feature extraction.
-- **Output Management Layer**: Manages generated music outputs, including saving, organizing, tagging, and exporting.
+```python
+# modules/core/base_model.py
+from abc import ABC, abstractmethod
+from typing import Dict, Any, Optional
 
-#### Cloud-Based Training Environment
+import torch
+from pydantic import BaseModel
 
-- **Training Platform**: Provides access to powerful GPU resources for accelerated model training.
-- **Model Fine-tuning Service**: Executes model fine-tuning based on user-provided datasets and training parameters.
+from .config import ModelConfig
 
-## Modules
 
-### Data Ingestion Module (`modules/data_ingestion.py`)
+class BaseAIModel(ABC):
+    """Base class for all AI models in the system."""
+    
+    def __init__(self, config: ModelConfig):
+        """Initialize the model with configuration.
+        
+        Args:
+            config: Model configuration.
+        """
+        self.config = config
+        self.model = None
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+    @abstractmethod
+    def load(self, path: str) -> None:
+        """Load model weights from path.
+        
+        Args:
+            path: Path to model weights file.
+        """
+        pass
+        
+    @abstractmethod
+    def save(self, path: str) -> None:
+        """Save model weights to path.
+        
+        Args:
+            path: Path to save model weights.
+        """
+        pass
+        
+    @abstractmethod
+    def predict(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """Run inference on the model.
+        
+        Args:
+            inputs: Dictionary of input tensors or values.
+            
+        Returns:
+            Dictionary of output tensors or values.
+        """
+        pass
+```
 
-The Data Ingestion Module handles the ingestion of various music data formats (audio, MIDI, image, video) and provides functionalities for importing data from local files, cloud storage, and online repositories.
+### Service Layer Implementation
 
-#### Key Classes and Functions
+Services provide high-level operations for the application. Each service should:
 
-- `DataIngestionModule`: Main class for data ingestion operations.
-  - `ingest_audio`: Ingests an audio file.
-  - `ingest_midi`: Ingests a MIDI file.
-  - `ingest_image`: Ingests an image file.
-  - `ingest_video`: Ingests a video file.
-  - `ingest_from_cloud`: Ingests a file from cloud storage.
-  - `ingest_from_online_repo`: Ingests a file from an online repository.
+1. Follow the **single responsibility principle**
+2. Implement a clear **public API** with comprehensive documentation
+3. Use **dependency injection** for accessing other services
+4. Support both **synchronous and asynchronous** operation modes
+5. Implement proper **error handling and logging**
 
-### Preprocessing Module (`modules/preprocessing.py`)
+Example service implementation:
 
-The Preprocessing Module performs audio and MIDI preprocessing, including format conversion, segmentation, feature extraction, and stem separation. It also offers tools for dataset creation, splitting, and augmentation.
+```python
+# modules/services/generation_service.py
+import logging
+from typing import Dict, Any, List, Optional
 
-#### Key Classes and Functions
+from ..core.base_model import BaseAIModel
+from ..core.config import GenerationConfig
 
-- `AudioPreprocessor`: Class for audio preprocessing operations.
-  - `convert_format`: Converts audio file format.
-  - `segment_audio`: Segments audio file into smaller chunks.
-  - `extract_features`: Extracts features from audio.
-  - `normalize_audio`: Normalizes audio.
-  - `trim_silence`: Trims silence from audio.
 
-- `MIDIPreprocessor`: Class for MIDI preprocessing operations.
-  - `standardize_midi`: Standardizes MIDI file format and encoding.
-  - `tokenize_midi`: Converts MIDI data into a sequence of tokens.
-  - `quantize_midi`: Quantizes note timings to align with a musical grid.
+class GenerationService:
+    """Service for generating musical content."""
+    
+    def __init__(
+        self, 
+        model_service: 'ModelService',
+        resource_service: 'ResourceService',
+        output_service: 'OutputService'
+    ):
+        """Initialize the generation service.
+        
+        Args:
+            model_service: Service for accessing AI models.
+            resource_service: Service for accessing resources.
+            output_service: Service for managing outputs.
+        """
+        self.model_service = model_service
+        self.resource_service = resource_service
+        self.output_service = output_service
+        self.logger = logging.getLogger(__name__)
+        
+    async def generate_from_text(
+        self,
+        text: str,
+        config: GenerationConfig,
+        project_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Generate music from text description.
+        
+        Args:
+            text: Text description of desired music.
+            config: Generation configuration.
+            project_id: Optional project ID to associate with generation.
+            
+        Returns:
+            Dictionary containing generation results.
+        """
+        self.logger.info(f"Generating music from text: {text[:50]}...")
+        
+        # Get appropriate model
+        model = await self.model_service.get_model(
+            model_type="text_to_music",
+            config=config
+        )
+        
+        # Prepare inputs
+        inputs = {"text": text, "config": config.dict()}
+        
+        # Generate outputs
+        outputs = await model.predict(inputs)
+        
+        # Save results
+        result_id = await self.output_service.save_generation(
+            outputs=outputs,
+            generation_type="text_to_music",
+            source_text=text,
+            project_id=project_id,
+            config=config
+        )
+        
+        return {
+            "result_id": result_id,
+            "outputs": outputs
+        }
+```
 
-- `DatasetManager`: Class for dataset creation and management.
-  - `create_dataset`: Creates a dataset from a list of data paths.
-  - `split_dataset`: Splits a dataset into training, validation, and testing sets.
+## Module Development Guidelines
 
-### Training Module (`modules/training.py`)
+### Creating New Modules
 
-The Training Module manages model fine-tuning, including training parameter adjustment, training progress monitoring, and checkpoint management. It integrates with cloud-based training environments (Google Colab, AWS, Azure).
+1. **Define clear interfaces** using abstract base classes
+2. **Implement concrete classes** that fulfill the interface
+3. **Write comprehensive unit tests** for all public methods
+4. **Document the module** with docstrings and examples
+5. **Register the module** with the appropriate service registry
 
-#### Key Classes and Functions
+### Configuration Management
 
-- `TrainingManager`: Class for managing the training of music generation models.
-  - `setup_training`: Sets up the training environment.
-  - `prepare_dataset`: Prepares a dataset for training.
-  - `fine_tune`: Fine-tunes a pre-trained model.
-  - `parameter_efficient_fine_tune`: Fine-tunes a pre-trained model using parameter-efficient methods (LoRA).
-  - `export_to_colab`: Exports the training setup to Google Colab.
-  - `import_from_colab`: Imports a fine-tuned model from Google Colab.
-  - `monitor_training_progress`: Monitors the progress of a training job.
-  - `load_checkpoint`: Loads a training checkpoint.
+Each module should define its configuration using Pydantic models:
 
-### Inference Module (`modules/inference.py`)
+```python
+# modules/core/config.py
+from typing import List, Optional, Union
+from pydantic import BaseModel, Field
 
-The Inference Module executes music generation based on user input and selected models. It is optimized for efficient inference on local hardware.
+class AudioProcessorConfig(BaseModel):
+    """Configuration for audio processor."""
+    
+    sample_rate: int = Field(44100, description="Sample rate in Hz")
+    n_fft: int = Field(2048, description="FFT size")
+    hop_length: int = Field(512, description="Hop length in samples")
+    normalize: bool = Field(True, description="Whether to normalize audio")
+    
+class ModelConfig(BaseModel):
+    """Base configuration for models."""
+    
+    model_id: str = Field(..., description="Unique model identifier")
+    model_type: str = Field(..., description="Type of model")
+    device: str = Field("cuda", description="Device to run model on")
+    precision: str = Field("float32", description="Precision for model weights")
+    quantized: bool = Field(False, description="Whether model is quantized")
+```
 
-#### Key Classes and Functions
+### Error Handling
 
-- `InferenceEngine`: Class for executing music generation using trained models.
-  - `load_model`: Loads a model for inference.
-  - `unload_model`: Unloads a model from memory.
-  - `generate_from_text`: Generates music from a text prompt.
-  - `generate_from_audio`: Generates music from an audio file.
-  - `generate_from_midi`: Generates music from a MIDI file.
-  - `generate_from_image`: Generates music from an image file.
-  - `adjust_parameters_realtime`: Adjusts generation parameters in real-time.
-  - `save_output`: Saves generation output to a file.
+Implement a custom exception hierarchy:
 
-### User Interface Module (`modules/ui.py`)
+```python
+# modules/core/exceptions.py
+class DiscoMusicaError(Exception):
+    """Base exception for all Disco-Musica errors."""
+    pass
 
-The User Interface Module provides a unified interface for both inference and training functionalities. It handles user interaction, input handling, and output display.
+class ResourceNotFoundError(DiscoMusicaError):
+    """Raised when a requested resource is not found."""
+    pass
 
-#### Key Classes and Functions
+class ModelNotFoundError(DiscoMusicaError):
+    """Raised when a requested model is not found."""
+    pass
 
-- `DiscoMusicaUI`: Class for the Disco Musica user interface.
-  - `setup_inference_interface`: Sets up the inference interface.
-  - `setup_training_interface`: Sets up the training interface.
-  - `setup_model_management_interface`: Sets up the model management interface.
-  - `launch_interface`: Launches the Disco Musica interface.
-  - `text_to_music`: Generates music from a text prompt.
-  - `audio_to_music`: Generates music from an audio input.
-  - `train_model`: Trains a model on a dataset.
+class ProcessingError(DiscoMusicaError):
+    """Raised when processing fails."""
+    pass
+```
 
-### Audio Processing Module (`modules/audio_processing.py`)
+Use appropriate exceptions throughout the codebase:
 
-The Audio Processing Module provides functionalities for audio analysis, manipulation, and synthesis. It leverages libraries like Librosa and Pydub for audio processing tasks.
+```python
+if not self.resource_service.exists(resource_id):
+    raise ResourceNotFoundError(f"Resource {resource_id} not found")
+```
 
-#### Key Classes and Functions
+### Logging
 
-- `AudioProcessor`: Class for audio processing operations.
-  - `load_audio`: Loads an audio file.
-  - `save_audio`: Saves audio data to a file.
-  - `convert_format`: Converts audio file format.
-  - `change_sample_rate`: Changes the sample rate of an audio file.
-  - `compute_spectrum`: Computes the spectrum of audio data.
-  - `extract_features`: Extracts features from audio data.
-  - `synthesize_audio`: Synthesizes audio from a spectrum.
-  - `apply_effects`: Applies audio effects to audio data.
-  - `mix_audio`: Mixes two audio tracks.
-  - `normalize_audio`: Normalizes audio data.
-  - `trim_silence`: Trims silence from audio data.
+Use structured logging for better analyzability:
 
-## Development Workflow
+```python
+import logging
+import json
+from datetime import datetime
 
-### Creating a New Feature
+logger = logging.getLogger(__name__)
 
-1. Create a new branch for your feature:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
+def process_audio(audio_path):
+    logger.info(
+        "Processing audio file",
+        extra={
+            "file_path": audio_path,
+            "timestamp": datetime.utcnow().isoformat(),
+            "operation": "audio_processing"
+        }
+    )
+    # Processing logic here
+```
 
-2. Implement your feature, following the code style and architecture guidelines.
+## Data Architecture and Management
 
-3. Write tests for your feature.
+### Resource Model
 
-4. Run the tests to ensure they pass:
-   ```bash
-   pytest
-   ```
+All data in the system is represented as resources with a consistent structure:
 
-5. Commit your changes:
-   ```bash
-   git add .
-   git commit -m "Add your feature"
-   ```
+```python
+# modules/core/resources.py
+from datetime import datetime
+from typing import Dict, List, Optional, Any
+from uuid import uuid4
 
-6. Push your branch to GitHub:
-   ```bash
-   git push origin feature/your-feature-name
-   ```
+from pydantic import BaseModel, Field
 
-7. Create a pull request on GitHub.
 
-### Fixing a Bug
+class Resource(BaseModel):
+    """Base model for all resources in the system."""
+    
+    resource_id: str = Field(default_factory=lambda: str(uuid4()))
+    resource_type: str
+    creation_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    modification_timestamp: datetime = Field(default_factory=datetime.utcnow)
+    version: int = 1
+    parent_resources: List[str] = Field(default_factory=list)
+    tags: Dict[str, str] = Field(default_factory=dict)
+    access_control: Dict[str, Any] = Field(default_factory=dict)
+    
+    class Config:
+        extra = "allow"  # Allow extra fields for resource-specific data
+```
 
-1. Create a new branch for your bug fix:
-   ```bash
-   git checkout -b fix/your-bug-fix
-   ```
+### Database Schema Management
 
-2. Implement your bug fix, following the code style and architecture guidelines.
+Use Alembic for SQL database schema management:
 
-3. Write tests for your bug fix.
-
-4. Run the tests to ensure they pass:
-   ```bash
-   pytest
-   ```
-
-5. Commit your changes:
-   ```bash
-   git add .
-   git commit -m "Fix your bug"
-   ```
-
-6. Push your branch to GitHub:
-   ```bash
-   git push origin fix/your-bug-fix
-   ```
-
-7. Create a pull request on GitHub.
-
-## Testing
-
-Disco Musica uses pytest for testing. Tests are located in the `tests/` directory.
-
-### Running Tests
-
-Run all tests:
 ```bash
-pytest
+# Initialize Alembic
+alembic init migrations
+
+# Create a migration
+alembic revision --autogenerate -m "Create project table"
+
+# Apply migrations
+alembic upgrade head
 ```
 
-Run tests for a specific module:
-```bash
-pytest tests/test_data_ingestion.py
+For MongoDB, use Pydantic models to ensure consistency.
+
+### Data Access Patterns
+
+Implement repositories for data access:
+
+```python
+# modules/core/repositories/project_repository.py
+from typing import List, Optional
+from uuid import UUID
+
+from motor.motor_asyncio import AsyncIOMotorClient
+
+from ..resources import ProjectResource
+
+
+class ProjectRepository:
+    """Repository for project resources."""
+    
+    def __init__(self, db_client: AsyncIOMotorClient):
+        """Initialize the repository.
+        
+        Args:
+            db_client: MongoDB client.
+        """
+        self.db = db_client.disco_musica
+        self.collection = self.db.projects
+        
+    async def find_by_id(self, project_id: str) -> Optional[ProjectResource]:
+        """Find a project by ID.
+        
+        Args:
+            project_id: Project ID.
+            
+        Returns:
+            Project resource if found, None otherwise.
+        """
+        doc = await self.collection.find_one({"resource_id": project_id})
+        if not doc:
+            return None
+        return ProjectResource(**doc)
+        
+    async def save(self, project: ProjectResource) -> str:
+        """Save a project.
+        
+        Args:
+            project: Project resource.
+            
+        Returns:
+            Project ID.
+        """
+        project.modification_timestamp = datetime.utcnow()
+        project_dict = project.dict()
+        await self.collection.replace_one(
+            {"resource_id": project.resource_id},
+            project_dict,
+            upsert=True
+        )
+        return project.resource_id
 ```
 
-Run tests with verbose output:
-```bash
-pytest -v
+## Model Development and Training
+
+### Model Architecture Standards
+
+1. **Modularity**: Models should be built from reusable components
+2. **Configurability**: All hyperparameters should be configurable
+3. **Reproducibility**: Training must be reproducible with fixed seeds
+4. **Extensibility**: Architecture should support easy extension
+
+### Model Training Framework
+
+Implement a standardized training framework:
+
+```python
+# modules/core/model_trainer.py
+from typing import Dict, Any, Callable, Optional
+
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+
+from .base_model import BaseAIModel
+from .config import TrainingConfig
+
+
+class ModelTrainer:
+    """Framework for training models."""
+    
+    def __init__(
+        self, 
+        model: BaseAIModel,
+        config: TrainingConfig,
+        train_loader: DataLoader,
+        val_loader: Optional[DataLoader] = None,
+        optimizer_fn: Callable = None,
+        scheduler_fn: Callable = None,
+        device: str = None
+    ):
+        """Initialize the trainer.
+        
+        Args:
+            model: Model to train.
+            config: Training configuration.
+            train_loader: DataLoader for training data.
+            val_loader: Optional DataLoader for validation data.
+            optimizer_fn: Function to create optimizer.
+            scheduler_fn: Function to create learning rate scheduler.
+            device: Device to train on (auto-detected if None).
+        """
+        self.model = model
+        self.config = config
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.model.to(self.device)
+        
+        # Set up optimizer
+        if optimizer_fn is None:
+            self.optimizer = torch.optim.AdamW(
+                model.parameters(),
+                lr=config.learning_rate,
+                weight_decay=config.weight_decay
+            )
+        else:
+            self.optimizer = optimizer_fn(model.parameters())
+            
+        # Set up scheduler
+        if scheduler_fn is not None:
+            self.scheduler = scheduler_fn(self.optimizer)
+        else:
+            self.scheduler = None
+            
+        # Initialize trackers
+        self.current_epoch = 0
+        self.best_val_loss = float('inf')
+        self.train_losses = []
+        self.val_losses = []
+        
+    def train_epoch(self) -> float:
+        """Train one epoch.
+        
+        Returns:
+            Average training loss.
+        """
+        self.model.train()
+        total_loss = 0
+        
+        for batch in self.train_loader:
+            # Move batch to device
+            batch = {k: v.to(self.device) if torch.is_tensor(v) else v 
+                     for k, v in batch.items()}
+            
+            # Forward pass
+            self.optimizer.zero_grad()
+            outputs = self.model(batch)
+            loss = outputs["loss"]
+            
+            # Backward pass
+            loss.backward()
+            
+            # Gradient clipping
+            if self.config.gradient_clip_val > 0:
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(), 
+                    self.config.gradient_clip_val
+                )
+                
+            self.optimizer.step()
+            total_loss += loss.item()
+            
+        avg_loss = total_loss / len(self.train_loader)
+        self.train_losses.append(avg_loss)
+        return avg_loss
+        
+    def validate(self) -> float:
+        """Run validation.
+        
+        Returns:
+            Average validation loss.
+        """
+        if not self.val_loader:
+            return 0.0
+            
+        self.model.eval()
+        total_loss = 0
+        
+        with torch.no_grad():
+            for batch in self.val_loader:
+                # Move batch to device
+                batch = {k: v.to(self.device) if torch.is_tensor(v) else v 
+                         for k, v in batch.items()}
+                
+                # Forward pass
+                outputs = self.model(batch)
+                loss = outputs["loss"]
+                total_loss += loss.item()
+                
+        avg_loss = total_loss / len(self.val_loader)
+        self.val_losses.append(avg_loss)
+        
+        # Check for best model
+        if avg_loss < self.best_val_loss:
+            self.best_val_loss = avg_loss
+            return avg_loss
+            
+    def train(self, num_epochs: int) -> Dict[str, Any]:
+        """Train the model for specified number of epochs.
+        
+        Args:
+            num_epochs: Number of epochs to train.
+            
+        Returns:
+            Dictionary with training results.
+        """
+        for epoch in range(num_epochs):
+            self.current_epoch += 1
+            
+            # Train one epoch
+            train_loss = self.train_epoch()
+            
+            # Validate
+            val_loss = self.validate()
+            
+            # Update learning rate
+            if self.scheduler is not None:
+                self.scheduler.step()
+                
+            # Log progress
+            print(f"Epoch {self.current_epoch}/{num_epochs}")
+            print(f"  Train loss: {train_loss:.4f}")
+            if val_loss:
+                print(f"  Val loss: {val_loss:.4f}")
+                
+        return {
+            "num_epochs": num_epochs,
+            "final_train_loss": train_loss,
+            "final_val_loss": val_loss,
+            "best_val_loss": self.best_val_loss,
+            "train_losses": self.train_losses,
+            "val_losses": self.val_losses
+        }
 ```
 
-Run tests with coverage report:
-```bash
-pytest --cov=modules
+### Model Training Configurations
+
+Define standard configurations for different model types:
+
+```python
+# Vocal melody generation model config
+VOCAL_MELODY_CONFIG = TrainingConfig(
+    learning_rate=5e-5,
+    batch_size=32,
+    num_epochs=100,
+    weight_decay=0.01,
+    gradient_clip_val=1.0,
+    warmup_steps=1000,
+    scheduler_type="cosine",
+    precision="mixed",  # Use mixed precision training
+    accumulate_grad_batches=4,  # Gradient accumulation for larger batches
+)
+
+# Audio effect model config
+AUDIO_EFFECT_CONFIG = TrainingConfig(
+    learning_rate=1e-4,
+    batch_size=64,
+    num_epochs=50,
+    weight_decay=0.001,
+    gradient_clip_val=0.5,
+    scheduler_type="plateau",
+    precision="float32",
+)
 ```
 
-### Writing Tests
+### Model Registry and Versioning
 
-When writing tests, follow these guidelines:
+Implement a model registry to track versions:
 
-1. Use descriptive test names that explain what the test is checking.
-2. Use fixtures to set up test data and resources.
-3. Test both normal and edge cases.
-4. Keep tests simple and focused on a single functionality.
-5. Use assertions to check the result of the test.
+```python
+# modules/core/model_registry.py
+import os
+from typing import Dict, List, Optional
+import json
 
-## Documentation
-
-Disco Musica uses Markdown for documentation. Documentation is located in the `docs/` directory.
-
-### Writing Documentation
-
-When writing documentation, follow these guidelines:
-
-1. Use clear and concise language.
-2. Use headings and lists to organize information.
-3. Include code examples where appropriate.
-4. Keep the documentation up-to-date with the code.
-
-### Generating API Documentation
-
-Disco Musica uses sphinx for API documentation. To generate API documentation:
-
-```bash
-cd docs
-sphinx-build -b html api_docs api_docs_build
+class ModelRegistry:
+    """Registry for trained models."""
+    
+    def __init__(self, registry_path: str):
+        """Initialize the registry.
+        
+        Args:
+            registry_path: Path to model registry directory.
+        """
+        self.registry_path = registry_path
+        self.index_path = os.path.join(registry_path, "index.json")
+        os.makedirs(registry_path, exist_ok=True)
+        
+        # Initialize or load index
+        if os.path.exists(self.index_path):
+            with open(self.index_path, "r") as f:
+                self.index = json.load(f)
+        else:
+            self.index = {
+                "models": {},
+                "latest_versions": {}
+            }
+            self._save_index()
+            
+    def register_model(
+        self,
+        model_id: str,
+        model_type: str,
+        version: str,
+        path: str,
+        metadata: Dict = None
+    ) -> str:
+        """Register a model in the registry.
+        
+        Args:
+            model_id: Unique model identifier.
+            model_type: Type of model.
+            version: Model version.
+            path: Path to model weights.
+            metadata: Additional metadata.
+            
+        Returns:
+            Full model ID (model_id:version).
+        """
+        full_id = f"{model_id}:{version}"
+        
+        if model_id not in self.index["models"]:
+            self.index["models"][model_id] = {}
+            
+        self.index["models"][model_id][version] = {
+            "path": path,
+            "model_type": model_type,
+            "metadata": metadata or {}
+        }
+        
+        # Update latest version
+        self.index["latest_versions"][model_id] = version
+        
+        self._save_index()
+        return full_id
+        
+    def get_model_path(
+        self,
+        model_id: str,
+        version: Optional[str] = None
+    ) -> Optional[str]:
+        """Get path to model weights.
+        
+        Args:
+            model_id: Model identifier.
+            version: Optional version (uses latest if None).
+            
+        Returns:
+            Path to model weights, or None if not found.
+        """
+        if model_id not in self.index["models"]:
+            return None
+            
+        if version is None:
+            version = self.index["latest_versions"].get(model_id)
+            if version is None:
+                return None
+                
+        if version not in self.index["models"][model_id]:
+            return None
+            
+        return self.index["models"][model_id][version]["path"]
+        
+    def _save_index(self):
+        """Save index to disk."""
+        with open(self.index_path, "w") as f:
+            json.dump(self.index, f, indent=2)
 ```
 
-The generated documentation will be available in the `docs/api_docs_build/` directory.
+## Integration Points
 
-## Contribution Guidelines
+### Logic Pro Integration
 
-When contributing to Disco Musica, please follow these guidelines:
+The Logic Pro integration consists of two main components:
 
-1. Fork the repository on GitHub.
-2. Create a new branch for your feature or bug fix.
-3. Implement your feature or bug fix, following the code style and architecture guidelines.
-4. Write tests for your feature or bug fix.
-5. Run the tests to ensure they pass.
-6. Commit your changes with clear and concise commit messages.
-7. Push your branch to GitHub.
-8. Create a pull request on GitHub.
+1. **Logic Pro Plugin**: Communicates with the backend service
+2. **Integration Service**: Handles requests from the plugin
 
-### Pull Request Process
+Implement the integration service:
 
-1. Ensure all tests pass.
-2. Update the documentation if needed.
-3. Update the README.md if needed.
-4. Request a review from one of the maintainers.
+```python
+# modules/services/integration_service.py
+import asyncio
+import json
+from typing import Dict, Any, List
 
-## Code Style
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
-Disco Musica follows the PEP 8 style guide for Python code. Additionally, we use the following tools to enforce code style:
+from ..core.exceptions import DiscoMusicaError
 
-- Black: Code formatter
-- Flake8: Linter
-- isort: Import sorter
 
-To format your code, run:
-```bash
-black .
-isort .
+class LogicProIntegrationService:
+    """Service for integration with Logic Pro."""
+    
+    def __init__(
+        self,
+        generation_service: 'GenerationService',
+        model_service: 'ModelService',
+        resource_service: 'ResourceService'
+    ):
+        """Initialize the integration service.
+        
+        Args:
+            generation_service: Service for music generation.
+            model_service: Service for model management.
+            resource_service: Service for resource management.
+        """
+        self.generation_service = generation_service
+        self.model_service = model_service
+        self.resource_service = resource_service
+        self.active_connections = []
+        
+    async def register_endpoints(self, app: FastAPI):
+        """Register WebSocket endpoints with FastAPI app.
+        
+        Args:
+            app: FastAPI application.
+        """
+        @app.websocket("/ws/logic-pro")
+        async def logic_pro_websocket(websocket: WebSocket):
+            await websocket.accept()
+            self.active_connections.append(websocket)
+            
+            try:
+                while True:
+                    data = await websocket.receive_json()
+                    
+                    # Process command
+                    command = data.get("command")
+                    params = data.get("params", {})
+                    
+                    response = await self.process_command(command, params)
+                    
+                    # Send response
+                    await websocket.send_json(response)
+            except WebSocketDisconnect:
+                self.active_connections.remove(websocket)
+            except Exception as e:
+                error_response = {
+                    "status": "error",
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+                await websocket.send_json(error_response)
+                
+    async def process_command(
+        self,
+        command: str,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Process a command from Logic Pro.
+        
+        Args:
+            command: Command to process.
+            params: Command parameters.
+            
+        Returns:
+            Response dictionary.
+        """
+        handlers = {
+            "project_info": self.handle_project_info,
+            "quantize_project": self.handle_quantize_project,
+            "generate_tracks": self.handle_generate_tracks,
+            "tune_vocals": self.handle_tune_vocals,
+            "apply_effects": self.handle_apply_effects,
+            "apply_mastering": self.handle_apply_mastering
+        }
+        
+        handler = handlers.get(command)
+        if not handler:
+            return {
+                "status": "error",
+                "error": f"Unknown command: {command}"
+            }
+            
+        try:
+            result = await handler(params)
+            return {
+                "status": "success",
+                "result": result
+            }
+        except DiscoMusicaError as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "error_type": type(e).__name__
+            }
+            
+    async def handle_project_info(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle project info command.
+        
+        Args:
+            params: Command parameters.
+            
+        Returns:
+            Project information.
+        """
+        project_path = params.get("project_path")
+        
+        # Create or update project profile
+        project_id = await self.resource_service.create_or_update_project(
+            project_path=project_path
+        )
+        
+        # Get project information
+        project = await self.resource_service.get_project(project_id)
+        
+        return {
+            "project_id": project_id,
+            "project_info": project.dict()
+        }
 ```
 
-To check your code for style issues, run:
-```bash
-flake8
+### External API Integration
+
+Implement a REST API for external integration:
+
+```python
+# modules/interfaces/api.py
+from fastapi import FastAPI, HTTPException, Depends
+from typing import Dict, Any, List, Optional
+
+from ..services.generation_service import GenerationService
+from ..services.model_service import ModelService
+from ..services.resource_service import ResourceService
+from ..core.config import GenerationConfig
+from ..core.exceptions import DiscoMusicaError, ResourceNotFoundError
+
+
+def create_api(
+    generation_service: GenerationService,
+    model_service: ModelService,
+    resource_service: ResourceService
+) -> FastAPI:
+    """Create FastAPI application.
+    
+    Args:
+        generation_service: Service for music generation.
+        model_service: Service for model management.
+        resource_service: Service for resource management.
+        
+    Returns:
+        FastAPI application.
+    """
+    app = FastAPI(
+        title="Disco-Musica API",
+        description="API for Disco-Musica music generation system",
+        version="1.0.0"
+    )
+    
+    @app.post("/api/generate/text-to-music")
+    async def generate_from_text(
+        text: str,
+        config: Optional[GenerationConfig] = None
+    ) -> Dict[str, Any]:
+        """Generate music from text description.
+        
+        Args:
+            text: Text description.
+            config: Optional generation configuration.
+            
+        Returns:
+            Generation results.
+        """
+        if config is None:
+            config = GenerationConfig()
+            
+        try:
+            result = await generation_service.generate_from_text(
+                text=text,
+                config=config
+            )
+            return result
+        except DiscoMusicaError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+            
+    @app.get("/api/resources/{resource_id}")
+    async def get_resource(resource_id: str) -> Dict[str, Any]:
+        """Get a resource by ID.
+        
+        Args:
+            resource_id: Resource ID.
+            
+        Returns:
+            Resource data.
+        """
+        try:
+            resource = await resource_service.get_resource(resource_id)
+            return resource.dict()
+        except ResourceNotFoundError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Resource {resource_id} not found"
+            )
+            
+    @app.get("/api/models")
+    async def list_models() -> List[Dict[str, Any]]:
+        """List available models.
+        
+        Returns:
+            List of model information.
+        """
+        models = await model_service.list_models()
+        return [model.dict() for model in models]
+        
+    return app
 ```
 
-## Resources
+## Testing Framework
 
-- [Python Documentation](mdc:https:/docs.python.org)
-- [PyTorch Documentation](mdc:https:/pytorch.org/docs/stable/index.html)
-- [TensorFlow Documentation](mdc:https:/www.tensorflow.org/api_docs)
-- [Librosa Documentation](mdc:https:/librosa.org/doc/latest/index.html)
-- [Music21 Documentation](mdc:https:/web.mit.edu/music21/doc/index.html)
-- [Gradio Documentation](mdc:https:/gradio.app/docs)
-- [Streamlit Documentation](mdc:https:/docs.streamlit.io)
+### Unit Testing Standards
+
+Create comprehensive unit tests for all modules:
+
+```python
+# tests/test_audio_processor.py
+import pytest
+import numpy as np
+import torch
+
+from modules.core.audio_processor import AudioProcessor
+from modules.core.config import AudioProcessorConfig
+
+
+class TestAudioProcessor:
+    """Tests for AudioProcessor class."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.config = AudioProcessorConfig(
+            sample_rate=44100,
+            n_fft=2048,
+            hop_length=512,
+            normalize=True
+        )
+        self.processor = AudioProcessor(self.config)
+        
+        # Create test audio (1-second sine wave)
+        t = np.linspace(0, 1, self.config.sample_rate)
+        self.test_audio = np.sin(2 * np.pi * 440 * t).astype(np.float32)
+        
+    def test_extract_features(self):
+        """Test feature extraction."""
+        features = self.processor.extract_features(self.test_audio)
+        
+        # Check expected features are present
+        assert "mfcc" in features
+        assert "chroma" in features
+        assert "spectral_contrast" in features
+        
+        # Check feature shapes
+        n_frames = 1 + (len(self.test_audio) - self.config.n_fft) // self.config.hop_length
+        assert features["mfcc"].shape[1] == n_frames
+        assert features["chroma"].shape[1] == n_frames
+        
+    def test_normalize_audio(self):
+        """Test audio normalization."""
+        # Create audio with different amplitude
+        loud_audio = self.test_audio * 2.5
+        
+        # Normalize
+        normalized = self.processor.normalize_audio(loud_audio)
+        
+        # Check max amplitude is within expected range
+        assert -1.0 <= normalized.max() <= 0.0
+        assert -1.0 <= normalized.min() <= 0.0
+        
+        # Original audio should be unchanged
+        assert loud_audio.max() > 1.0
+```
+
+### Integration Testing
+
+Implement integration tests for service interactions:
+
+```python
+# tests/integration/test_generation_flow.py
+import pytest
+import asyncio
+from unittest.mock import MagicMock, patch
+
+from modules.services.generation_service import GenerationService
+from modules.services.model_service import ModelService
+from modules.services.resource_service import ResourceService
+from modules.services.output_service import OutputService
+from modules.core.config import GenerationConfig
+
+
+@pytest.mark.asyncio
+async def test_complete_generation_flow():
+    """Test the complete text-to-music generation flow."""
+    # Mock services
+    model_service = MagicMock(spec=ModelService)
+    resource_service = MagicMock(spec=ResourceService)
+    output_service = MagicMock(spec=OutputService)
+    
+    # Mock model and its predict method
+    mock_model = MagicMock()
+    mock_model.predict.return_value = {
+        "audio": b"dummy_audio_data",
+        "midi": b"dummy_midi_data",
+        "confidence": 0.95
+    }
+    
+    # Configure model service mock
+    model_service.get_model.return_value = mock_model
+    
+    # Configure output service mock
+    output_service.save_generation.return_value = "result_123"
+    
+    # Create service under test
+    generation_service = GenerationService(
+        model_service=model_service,
+        resource_service=resource_service,
+        output_service=output_service
+    )
+    
+    # Execute the flow
+    result = await generation_service.generate_from_text(
+        text="Create a cheerful pop song with piano and drums",
+        config=GenerationConfig(
+            temperature=0.8,
+            max_duration_seconds=30
+        )
+    )
+    
+    # Verify expected service interactions
+    model_service.get_model.assert_called_once_with(
+        model_type="text_to_music",
+        config=GenerationConfig(temperature=0.8, max_duration_seconds=30)
+    )
+    
+    mock_model.predict.assert_called_once()
+    assert "text" in mock_model.predict.call_args[0][0]
+    
+    output_service.save_generation.assert_called_once()
+    assert output_service.save_generation.call_args[1]["generation_type"] == "text_to_music"
+    
+    # Verify result structure
+    assert result["result_id"] == "result_123"
+    assert "outputs" in result
+    assert "audio" in result["outputs"]
+    assert "midi" in result["outputs"]
+```
+
+### Performance Testing
+
+Create benchmarks for critical paths:
+
+```python
+# tests/performance/test_inference_performance.py
+import time
+import pytest
+import numpy as np
+import torch
+
+from modules.core.text_to_music_model import TextToMusicModel
+from modules.core.config import ModelConfig
+
+
+class TestInferencePerformance:
+    """Performance tests for model inference."""
+    
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.config = ModelConfig(
+            model_id="text_to_music_test",
+            model_type="text_to_music",
+            device="cuda" if torch.cuda.is_available() else "cpu",
+            precision="float32",
+            quantized=False
+        )
+        self.model = TextToMusicModel(self.config)
+        self.model.load("path/to/test/model")
+        
+    @pytest.mark.performance
+    def test_inference_time(self):
+        """Test inference time for standard input."""
+        input_text = "Create an electronic dance track with strong bass"
+        
+        # Warm up
+        for _ in range(3):
+            self.model.predict({"text": input_text})
+            
+        # Measure performance
+        iterations = 10
+        start_time = time.time()
+        
+        for _ in range(iterations):
+            result = self.model.predict({"text": input_text})
+            
+        end_time = time.time()
+        avg_time = (end_time - start_time) / iterations
+        
+        # Assert performance meets requirements
+        assert avg_time < 5.0, f"Inference too slow: {avg_time:.2f}s (max: 5.0s)"
+        
+        # Check result contains expected data
+        assert "audio" in result
+        assert "midi" in result
+```
+
+## Performance Optimization
+
+### Model Optimization Techniques
+
+1. **Model Quantization**:
+   ```python
+   def quantize_model(model, quantization_type="dynamic"):
+       """Quantize PyTorch model.
+       
+       Args:
+           model: PyTorch model.
+           quantization_type: Type of quantization (dynamic, static, qat).
+           
+       Returns:
+           Quantized model.
+       """
+       if quantization_type == "dynamic":
+           return torch.quantization.quantize_dynamic(
+               model, {torch.nn.Linear, torch.nn.Conv1d, torch.nn.Conv2d}, dtype=torch.qint8
+           )
+       elif quantization_type == "static":
+           # Configure static quantization
+           model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+           torch.quantization.prepare(model, inplace=True)
+           # Calibrate with sample data (not shown)
+           return torch.quantization.convert(model, inplace=True)
+       else:
+           raise ValueError(f"Unsupported quantization type: {quantization_type}")
+   ```
+
+2. **ONNX Export**:
+   ```python
+   def export_to_onnx(model, input_shape, path):
+       """Export PyTorch model to ONNX.
+       
+       Args:
+           model: PyTorch model.
+           input_shape: Input tensor shape.
+           path: Output file path.
+       """
+       dummy_input = torch.randn(input_shape)
+       torch.onnx.export(
+           model,
+           dummy_input,
+           path,
+           export_params=True,
+           opset_version=13,
+           do_constant_folding=True,
+           input_names=['input'],
+           output_names=['output'],
+           dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
+       )
+   ```
+
+3. **GPU Memory Optimization**:
+   ```python
+   def optimize_memory_usage(model, config):
+       """Optimize model memory usage.
+       
+       Args:
+           model: PyTorch model.
+           config: Configuration.
+           
+       Returns:
+           Optimized model.
+       """
+       # Use mixed precision where supported
+       if config.precision == "mixed" and torch.cuda.is_available():
+           model = model.half()
+           
+       # Enable gradient checkpointing for large models
+       if hasattr(model, "enable_gradient_checkpointing"):
+           model.enable_gradient_checkpointing()
+           
+       return model
+   ```
+
+### Database Optimization
+
+1. **Indexing Strategy**:
+   ```python
+   # MongoDB indexes
+   await db.projects.create_index("resource_id", unique=True)
+   await db.projects.create_index("tags")
+   await db.projects.create_index("creation_timestamp")
+   
+   # PostgreSQL indexes
+   """
+   CREATE INDEX idx_resources_type ON resources (resource_type);
+   CREATE INDEX idx_resources_created ON resources (creation_timestamp);
+   CREATE INDEX idx_resources_parent ON resources USING GIN (parent_resources);
+   """
+   ```
+
+2. **Caching Layer**:
+   ```python
+   from functools import lru_cache
+   
+   @lru_cache(maxsize=100)
+   async def get_cached_resource(resource_id):
+       """Get resource with caching.
+       
+       Args:
+           resource_id: Resource ID.
+           
+       Returns:
+           Resource data.
+       """
+       return await db.resources.find_one({"resource_id": resource_id})
+   ```
+
+### Concurrent Processing
+
+Implement parallel processing for intensive operations:
+
+```python
+async def process_audio_files(file_paths, processor_config):
+    """Process multiple audio files concurrently.
+    
+    Args:
+        file_paths: List of file paths.
+        processor_config: Audio processor configuration.
+        
+    Returns:
+        Dictionary of processing results.
+    """
+    processor = AudioProcessor(processor_config)
+    
+    async def process_single_file(file_path):
+        # Load audio
+        audio, sr = await load_audio_file(file_path)
+        
+        # Process audio
+        features = processor.extract_features(audio)
+        
+        return {
+            "file_path": file_path,
+            "features": features
+        }
+    
+    # Process files concurrently
+    tasks = [process_single_file(path) for path in file_paths]
+    results = await asyncio.gather(*tasks)
+    
+    # Organize results by file path
+    return {result["file_path"]: result["features"] for result in results}
+```
+
+## Deployment Strategies
+
+### Containerization
+
+Create Docker containers for all components:
+
+```dockerfile
+# Dockerfile
+FROM python:3.8-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libsndfile1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV MODEL_STORAGE_PATH=/app/models
+ENV DATA_STORAGE_PATH=/app/data
+
+# Expose ports
+EXPOSE 8000
+
+# Run application
+CMD ["uvicorn", "modules.interfaces.api:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+### Kubernetes Deployment
+
+Create Kubernetes manifests for orchestration:
+
+```yaml
+# kubernetes/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: disco-musica-api
+  labels:
+    app: disco-musica
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: disco-musica
+      component: api
+  template:
+    metadata:
+      labels:
+        app: disco-musica
+        component: api
+    spec:
+      containers:
+      - name: api
+        image: disco-musica/api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: disco-musica-secrets
+              key: mongodb-uri
+        - name: POSTGRES_URI
+          valueFrom:
+            secretKeyRef:
+              name: disco-musica-secrets
+              key: postgres-uri
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+          requests:
+            memory: "1Gi"
+            cpu: "0.5"
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage-pvc
+```
+
+### Monitoring and Logging
+
+Implement monitoring with Prometheus and Grafana:
+
+```python
+# modules/interfaces/metrics.py
+from prometheus_client import Counter, Histogram, start_http_server
+
+# Define metrics
+REQUESTS_TOTAL = Counter(
+    'disco_musica_requests_total',
+    'Total number of requests',
+    ['endpoint', 'status']
+)
+
+RESPONSE_TIME = Histogram(
+    'disco_musica_response_time_seconds',
+    'Response time in seconds',
+    ['endpoint'],
+    buckets=(0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0)
+)
+
+MODEL_INFERENCE_TIME = Histogram(
+    'disco_musica_model_inference_time_seconds',
+    'Model inference time in seconds',
+    ['model_type', 'model_id'],
+    buckets=(0.1, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0)
+)
+
+GENERATION_SIZES = Histogram(
+    'disco_musica_generation_sizes_bytes',
+    'Size of generated content in bytes',
+    ['content_type'],
+    buckets=(1024, 10*1024, 100*1024, 1024*1024, 10*1024*1024)
+)
+
+# Start metrics server
+def start_metrics_server(port=8001):
+    """Start Prometheus metrics server.
+    
+    Args:
+        port: Server port.
+    """
+    start_http_server(port)
+```
+
+## Documentation Standards
+
+### API Documentation
+
+Use OpenAPI and SwaggerUI for API documentation:
+
+```python
+from fastapi import FastAPI
+from fastapi.openapi.docs import get_swagger_ui_html
+
+app = FastAPI(
+    title="Disco-Musica API",
+    description="API for the Disco-Musica music generation system",
+    version="1.0.0",
+    docs_url=None  # Disable default docs
+)
+
+@app.get("/docs", include_in_schema=False)
+async def custom_docs():
+    """Custom SwaggerUI with branding."""
+    return get_swagger_ui_html(
+        openapi_url="/openapi.json",
+        title="Disco-Musica API Documentation",
+        swagger_ui_parameters={
+            "syntaxHighlight.theme": "monokai",
+            "docExpansion": "none",
+            "defaultModelsExpandDepth": -1,
+            "tryItOutEnabled": True,
+        }
+    )
+```
+
+### Code Documentation
+
+Follow Google docstring format for all public APIs:
+
+```python
+def process_audio(audio_path, config=None):
+    """Process audio file and extract features.
+    
+    This function loads an audio file, applies preprocessing steps according to
+    the provided configuration, and extracts relevant features for analysis or
+    model input.
+    
+    Args:
+        audio_path: Path to the audio file.
+        config: Optional configuration dictionary with the following keys:
+            - sample_rate: Target sample rate (default: 44100)
+            - normalize: Whether to normalize audio (default: True)
+            - features: List of features to extract (default: all)
+    
+    Returns:
+        Dict[str, np.ndarray]: Dictionary of extracted features.
+        
+    Raises:
+        FileNotFoundError: If the audio file does not exist.
+        ValueError: If the audio file cannot be processed.
+        
+    Example:
+        >>> features = process_audio("path/to/audio.wav")
+        >>> mfcc = features["mfcc"]
+    """
+```
+
+## Version Control and CI/CD
+
+### Git Workflow
+
+Follow the GitHub Flow model:
+
+1. Create feature branches from `master`
+2. Make changes and commit to feature branch
+3. Create pull request (PR) for review
+4. Automated tests run on PR
+5. Review and address feedback
+6. Merge to `master` when approved
+7. Deploy from `master`
+
+### CI/CD Pipeline
+
+Implement a GitHub Actions workflow:
+
+```yaml
+# .github/workflows/ci.yml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:4.4
+        ports:
+          - 27017:27017
+      
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    
+    - name: Type check with mypy
+      run: |
+        mypy modules
+    
+    - name: Run tests
+      run: |
+        pytest tests/
+  
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v2
+      with:
+        context: .
+        push: true
+        tags: |
+          disco-musica/api:latest
+          disco-musica/api:${{ github.sha }}
+  
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v1
+    
+    - name: Configure kubernetes
+      run: |
+        echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+        export KUBECONFIG=./kubeconfig.yaml
+    
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl set image deployment/disco-musica-api api=disco-musica/api:${{ github.sha }}
+```
+
+## Appendix: Detailed Flow Implementations
+
+This appendix contains detailed implementation guides for each flow from the system architecture document.
+
+### Flow #0.1: Profile Updating
+
+Full implementation of the Profile Updating flow:
+
+```python
+# modules/services/resource_service.py
+from typing import Dict, Any, Optional
+import os
+import json
+from datetime import datetime
+import hashlib
+
+from ..core.resources import ProjectResource, TrackResource
+from ..core.audio_processor import AudioProcessor
+from ..core.midi_processor import MidiProcessor
+from ..core.exceptions import ResourceNotFoundError, ProcessingError
+
+
+class ResourceService:
+    """Service for managing resources."""
+    
+    def __init__(
+        self,
+        project_repository: 'ProjectRepository',
+        track_repository: 'TrackRepository',
+        audio_processor: AudioProcessor,
+        midi_processor: MidiProcessor
+    ):
+        """Initialize the service."""
+        self.project_repository = project_repository
+        self.track_repository = track_repository
+        self.audio_processor = audio_processor
+        self.midi_processor = midi_processor
+        
+    async def update_project_profile(self, project_id: str) -> ProjectResource:
+        """Update project profile with latest analysis.
+        
+        Args:
+            project_id: Project ID.
+            
+        Returns:
+            Updated project resource.
+        """
+        # Get project
+        project = await self.project_repository.find_by_id(project_id)
+        if not project:
+            raise ResourceNotFoundError(f"Project {project_id} not found")
+            
+        # Get project file path
+        project_path = project.basic_info.get("original_file_path")
+        if not project_path or not os.path.exists(project_path):
+            raise ProcessingError(f"Project file not found: {project_path}")
+            
+        # Extract project data
+        project_data = self._extract_project_data(project_path)
+        
+        # Update project with extracted data
+        project.musical_properties.update(project_data.get("musical_properties", {}))
+        
+        # Process tracks
+        track_resources = []
+        for track_data in project_data.get("tracks", []):
+            track_resource = await self._process_track(track_data, project_id)
+            track_resources.append(track_resource.resource_id)
+            
+        # Update project tracks
+        project.tracks = track_resources
+        
+        # Apply musical analysis
+        analysis_results = await self._analyze_project(project, track_resources)
+        project.analysis_results = analysis_results
+        
+        # Update modification timestamp
+        project.modification_timestamp = datetime.utcnow()
+        
+        # Save updated project
+        await self.project_repository.save(project)
+        
+        return project
+        
+    def _extract_project_data(self, project_path: str) -> Dict[str, Any]:
+        """Extract data from Logic project file.
+        
+        Args:
+            project_path: Path to Logic project file.
+            
+        Returns:
+            Dictionary with extracted data.
+        """
+        # This is a placeholder - actual implementation would use
+        # a Logic project parser library or Apple Script
+        
+        # Mock implementation for illustration
+        return {
+            "musical_properties": {
+                "bpm": 120,
+                "key": "C major",
+                "time_signature": "4/4"
+            },
+            "tracks": [
+                {
+                    "name": "Vocal",
+                    "type": "audio",
+                    "role": "vocal",
+                    "file_path": "/path/to/vocal.wav"
+                },
+                {
+                    "name": "Piano",
+                    "type": "midi",
+                    "role": "accompaniment",
+                    "file_path": "/path/to/piano.mid"
+                }
+            ]
+        }
+        
+    async def _process_track(
+        self,
+        track_data: Dict[str, Any],
+        project_id: str
+    ) -> TrackResource:
+        """Process a track and create/update resource.
+        
+        Args:
+            track_data: Track data.
+            project_id: Parent project ID.
+            
+        Returns:
+            Track resource.
+        """
+        # Generate track ID based on file path
+        file_path = track_data.get("file_path")
+        track_id = f"track_{hashlib.md5(file_path.encode()).hexdigest()}"
+        
+        # Check if track already exists
+        existing_track = await self.track_repository.find_by_id(track_id)
+        if existing_track:
+            track = existing_track
+        else:
+            # Create new track resource
+            track = TrackResource(
+                resource_id=track_id,
+                resource_type="track",
+                parent_resources=[project_id],
+                basic_info={
+                    "name": track_data.get("name"),
+                    "type": track_data.get("type"),
+                    "role": track_data.get("role"),
+                    "original_file_path": file_path
+                },
+                content_reference={
+                    "storage_type": "file_system",
+                    "location": file_path,
+                    "format": os.path.splitext(file_path)[1][1:]
+                }
+            )
+            
+        # Process based on track type
+        if track_data.get("type") == "audio":
+            await self._process_audio_track(track, file_path)
+        elif track_data.get("type") == "midi":
+            await self._process_midi_track(track, file_path)
+            
+        # Save track
+        await self.track_repository.save(track)
+        
+        return track
+        
+    async def _process_audio_track(self, track: TrackResource, file_path: str) -> None:
+        """Process audio track.
+        
+        Args:
+            track: Track resource.
+            file_path: Path to audio file.
+        """
+        # Load audio
+        audio, sr = await self.audio_processor.load_audio(file_path)
+        
+        # Extract features
+        features = self.audio_processor.extract_features(audio, sr)
+        
+        # Update track with audio properties
+        track.audio_properties = {
+            "sample_rate": sr,
+            "channels": 2 if len(audio.shape) > 1 else 1,
+            "duration_seconds": len(audio) / sr,
+            "peak_amplitude": float(abs(audio).max())
+        }
+        
+        # Store feature references
+        track.derived_features = {
+            "extracted_audio_features": {
+                feature_name: f"feature_{track.resource_id}_{feature_name}"
+                for feature_name in features.keys()
+            }
+        }
+        
+        # Save features as separate resources (not shown)
+        
+    async def _process_midi_track(self, track: TrackResource, file_path: str) -> None:
+        """Process MIDI track.
+        
+        Args:
+            track: Track resource.
+            file_path: Path to MIDI file.
+        """
+        # Parse MIDI
+        midi_data = await self.midi_processor.parse_midi(file_path)
+        
+        # Extract properties
+        notes = self.midi_processor.extract_notes(midi_data)
+        
+        # Update track with MIDI properties
+        track.midi_properties = {
+            "note_count": len(notes),
+            "velocity_range": [
+                min(note.velocity for note in notes),
+                max(note.velocity for note in notes)
+            ],
+            "pitch_range": [
+                min(note.pitch for note in notes),
+                max(note.pitch for note in notes)
+            ],
+            "polyphony": self.midi_processor.is_polyphonic(notes)
+        }
+        
+        # Store derived features
+        track.derived_features = {
+            "extracted_midi_features": {
+                "notes": f"feature_{track.resource_id}_notes",
+                "piano_roll": f"feature_{track.resource_id}_piano_roll"
+            }
+        }
+        
+        # Save features as separate resources (not shown)
+        
+    async def _analyze_project(
+        self,
+        project: ProjectResource,
+        track_ids: list
+    ) -> list:
+        """Perform musical analysis on project.
+        
+        Args:
+            project: Project resource.
+            track_ids: List of track IDs.
+            
+        Returns:
+            List of analysis result IDs.
+        """
+        # This would call specialized analysis modules
+        # - Chord/harmonic analysis
+        # - Genre/style classification
+        # - Emotional content analysis
+        
+        # Mock implementation for illustration
+        analysis_ids = [
+            f"analysis_{project.resource_id}_chords",
+            f"analysis_{project.resource_id}_genre",
+            f"analysis_{project.resource_id}_emotion"
+        ]
+        
+        return analysis_ids
+```
+
+Other detailed flow implementations would follow a similar structure.

@@ -8,12 +8,21 @@ import os
 import json
 import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
 from huggingface_hub import HfApi, model_info, snapshot_download
 from huggingface_hub.utils import HfHubHTTPError
 
 from modules.core.config import config
+from modules.core.resources.resource_manager import ResourceManager
+from modules.core.resources.model_resource import ModelResource
+from modules.models.model_registry import ModelRegistry
+from modules.core.processors.processor_manager import ProcessorManager
+from modules.exceptions.base_exceptions import (
+    ProcessingError,
+    ValidationError,
+    ResourceNotFoundError
+)
 
 
 class ModelService:
@@ -24,10 +33,33 @@ class ModelService:
     models for various music generation tasks.
     """
     
-    def __init__(self):
+    def __init__(
+        self,
+        resource_manager: ResourceManager,
+        model_registry: ModelRegistry,
+        processor_manager: ProcessorManager,
+        cache_dir: Union[str, Path]
+    ):
         """
         Initialize the ModelService.
+        
+        Args:
+            resource_manager: Resource manager instance.
+            model_registry: Model registry instance.
+            processor_manager: Processor manager instance.
+            cache_dir: Directory for model caching.
         """
+        self.resource_manager = resource_manager
+        self.model_registry = model_registry
+        self.processor_manager = processor_manager
+        self.cache_dir = Path(cache_dir)
+        
+        # Set up logging
+        self.logger = logging.getLogger(__name__)
+        
+        # Model instance cache
+        self._model_cache: Dict[str, Any] = {}
+        
         self.pretrained_dir = Path(config.get("models", "model_cache_dir", "models")) / "pretrained"
         self.finetuned_dir = Path(config.get("models", "model_cache_dir", "models")) / "finetuned"
         self.model_registry = {}
@@ -525,6 +557,201 @@ class ModelService:
         except Exception as e:
             print(f"Error creating model instance for {model_id}: {e}")
             return None
+
+    async def load_model(
+        self,
+        model_id: str,
+        force_reload: bool = False
+    ) -> Any:
+        """Load a model instance.
+        
+        Args:
+            model_id: Model ID.
+            force_reload: Whether to force reload from disk.
+            
+        Returns:
+            Model instance.
+            
+        Raises:
+            ResourceNotFoundError: If model not found.
+            ProcessingError: If loading fails.
+        """
+        try:
+            # Check cache first
+            if not force_reload and model_id in self._model_cache:
+                return self._model_cache[model_id]
+                
+            # Get model resource
+            model = self.resource_manager.get_resource("model", model_id)
+            
+            # Get model instance
+            model_instance = self.model_registry.get_model(
+                model.model_type,
+                model.version
+            )
+            
+            # Load weights if available
+            if model.weights_path:
+                await model_instance.load(model.weights_path)
+                
+            # Cache instance
+            self._model_cache[model_id] = model_instance
+            return model_instance
+            
+        except Exception as e:
+            raise ProcessingError(f"Error loading model: {e}")
+            
+    async def unload_model(self, model_id: str) -> None:
+        """Unload a model instance.
+        
+        Args:
+            model_id: Model ID.
+            
+        Raises:
+            ResourceNotFoundError: If model not found.
+            ProcessingError: If unloading fails.
+        """
+        try:
+            if model_id in self._model_cache:
+                model_instance = self._model_cache[model_id]
+                await model_instance.unload()
+                del self._model_cache[model_id]
+                
+        except Exception as e:
+            raise ProcessingError(f"Error unloading model: {e}")
+            
+    async def train_model(
+        self,
+        model_id: str,
+        train_data: Dict[str, Any],
+        val_data: Optional[Dict[str, Any]] = None,
+        config: Optional[Dict[str, Any]] = None
+    ) -> ModelResource:
+        """Train a model.
+        
+        Args:
+            model_id: Model ID.
+            train_data: Training data.
+            val_data: Optional validation data.
+            config: Optional training configuration.
+            
+        Returns:
+            Updated model resource.
+            
+        Raises:
+            ResourceNotFoundError: If model not found.
+            ProcessingError: If training fails.
+        """
+        try:
+            # Get model resource
+            model = self.resource_manager.get_resource("model", model_id)
+            
+            # Get model instance
+            model_instance = await self.load_model(model_id, force_reload=True)
+            
+            # Train model
+            try:
+                metrics = await model_instance.train(
+                    train_data,
+                    val_data=val_data,
+                    **config or {}
+                )
+                
+                # Save weights
+                weights_path = self.cache_dir / f"{model_id}.pt"
+                await model_instance.save(weights_path)
+                
+                # Update model resource
+                model.set_weights_path(str(weights_path))
+                model.set_training_config(config or {})
+                model.update_metrics(metrics)
+                model.set_last_trained(datetime.datetime.utcnow())
+                
+                return model
+                
+            except Exception as e:
+                raise ProcessingError(f"Training failed: {e}")
+                
+        except Exception as e:
+            raise ProcessingError(f"Error in model training: {e}")
+            
+    async def evaluate_model(
+        self,
+        model_id: str,
+        test_data: Dict[str, Any],
+        config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, float]:
+        """Evaluate a model.
+        
+        Args:
+            model_id: Model ID.
+            test_data: Test data.
+            config: Optional evaluation configuration.
+            
+        Returns:
+            Dictionary of evaluation metrics.
+            
+        Raises:
+            ResourceNotFoundError: If model not found.
+            ProcessingError: If evaluation fails.
+        """
+        try:
+            # Get model instance
+            model_instance = await self.load_model(model_id)
+            
+            # Evaluate model
+            metrics = await model_instance.evaluate(
+                test_data,
+                **config or {}
+            )
+            
+            # Update model metrics
+            model = self.resource_manager.get_resource("model", model_id)
+            model.update_metrics(metrics)
+            
+            return metrics
+            
+        except Exception as e:
+            raise ProcessingError(f"Error in model evaluation: {e}")
+            
+    def get_default_model(
+        self,
+        model_type: str
+    ) -> Optional[ModelResource]:
+        """Get default model for a type.
+        
+        Args:
+            model_type: Model type.
+            
+        Returns:
+            Default model resource or None if not found.
+        """
+        # Get active models of type
+        models = [
+            m for m in self.resource_manager.list_resources("model", status="active")
+            if m.model_type == model_type
+        ]
+        
+        if not models:
+            return None
+            
+        # Return model with highest metrics
+        return max(
+            models,
+            key=lambda m: sum(m.metrics.values()) if m.metrics else 0
+        )
+        
+    async def cleanup(self) -> None:
+        """Clean up model service.
+        
+        This unloads all models and clears the cache.
+        """
+        # Unload all models
+        for model_id in list(self._model_cache.keys()):
+            await self.unload_model(model_id)
+            
+        # Clear cache
+        self._model_cache.clear()
 
 
 # Create a global model service instance

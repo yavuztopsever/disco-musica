@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: disco-musica-api
+  labels:
+    app: disco-musica
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: disco-musica
+      component: api
+  template:
+    metadata:
+      labels:
+        app: disco-musica
+        component: api
+    spec:
+      containers:
+      - name: api
+        image: disco-musica/api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: MONGODB_URI
+          valueFrom:
+            secretKeyRef:
+              name: disco-musica-secrets
+              key: mongodb-uri
+        - name: POSTGRES_URI
+          valueFrom:
+            secretKeyRef:
+              name: disco-musica-secrets
+              key: postgres-uri
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+          requests:
+            memory: "1Gi"
+            cpu: "0.5"
+        volumeMounts:
+        - name: model-storage
+          mountPath: /app/models
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-storage-pvc 

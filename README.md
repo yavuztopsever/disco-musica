@@ -1,25 +1,31 @@
 # Disco Musica
 
-An open-source multimodal AI music generation application that leverages cutting-edge advancements in machine learning and multimodal AI.
+An open-source multimodal AI music generation and analysis platform that leverages cutting-edge advancements in machine learning, signal processing, and time series analytics.
 
 ## Overview
 
-Disco Musica aims to revolutionize music creation by making AI-powered music generation accessible to a diverse range of users, from novice enthusiasts to seasoned professionals. The platform offers a unified user interface for both music generation (inference) and model fine-tuning (training), fostering a collaborative and innovative ecosystem.
+Disco Musica aims to revolutionize music creation and analysis by providing a comprehensive suite of tools for AI-powered music generation, performance analysis, and data-driven insights. The platform offers unified interfaces for music generation, analysis, and model training, fostering a collaborative and innovative ecosystem.
 
 ## Key Features
 
-### Multimodal Input Support
+### Multimodal Generation
 - **Text-to-Music**: Generate music from natural language descriptions
 - **Audio-to-Music**: Transform and generate music from existing audio
 - **MIDI-to-Music**: Create music from MIDI files
 - **Image-to-Music**: Generate music inspired by visual content
 - **Video-to-Music**: Create music based on video content
 
-### Advanced Control
-- **Musical Parameters**: Fine-grained control over tempo, key, instrumentation
-- **Style Control**: Adjust genre, mood, and musical style
-- **Structure Control**: Define musical form and arrangement
-- **Creativity Level**: Balance between coherence and innovation
+### Advanced Analytics
+- **Time Series Analysis**: Comprehensive analysis of performance metrics and training history
+- **Pattern Detection**: Identify seasonal, cyclic, and trend patterns in musical data
+- **Similarity Analysis**: Compare and analyze relationships between different metrics
+- **Performance Monitoring**: Track and analyze model performance over time
+
+### Data Management
+- **Universal Storage**: Efficient storage for time series data and object files
+- **Vector Embeddings**: Advanced similarity search and retrieval
+- **Resource Tracking**: Comprehensive tracking of all system resources
+- **Version Control**: Full version history for all resources
 
 ### Technical Features
 - **Hybrid Architecture**: Local resources for inference, cloud resources for training
@@ -27,21 +33,41 @@ Disco Musica aims to revolutionize music creation by making AI-powered music gen
 - **Efficient Processing**: Optimized for various hardware platforms
 - **Open Source**: Community-driven development and improvement
 
+## System Components
+
+### Core Services
+1. **Storage Services**
+   - Time Series Storage: Performance metrics and training history
+   - Object Storage: File management and versioning
+   - Vector Storage: Similarity-based search and retrieval
+
+2. **Model Services**
+   - Production Model: Music generation and processing
+   - Mastering Model: Audio mastering and enhancement
+   - Vector Embedding Model: Semantic similarity analysis
+   - Time Series Model: Pattern detection and forecasting
+
+3. **Interface Services**
+   - Logic Pro Interface: DAW integration
+   - Vector Search Interface: Similarity search operations
+   - Time Series Interface: Analytics and pattern detection
+
 ## Getting Started
 
 ### Prerequisites
 
 - Python 3.8+
-- PyTorch or TensorFlow
+- PyTorch
 - Audio processing libraries (Librosa, PyDub)
 - MIDI processing libraries (Music21)
+- Data analysis libraries (NumPy, Pandas, SciPy)
 - FFmpeg (for audio processing)
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/disco-musica.git
+git clone https://github.com/yavuztopsever/disco-musica.git
 cd disco-musica
 
 # Create and activate a virtual environment
@@ -54,107 +80,101 @@ venv\Scripts\activate  # On Windows
 pip install -r requirements.txt
 ```
 
-## Usage
+## Usage Examples
 
-### Music Generation (Inference)
+### Music Generation
 
-1. **Text-to-Music Generation**
-   ```python
-   from disco_musica import generate_from_text
-   
-   # Generate music from text description
-   audio = generate_from_text(
-       prompt="Create an upbeat disco track with funky bass and groovy drums",
-       duration=30,
-       temperature=0.7
-   )
-   ```
+```python
+from disco_musica.models.production import ProductionModel
+from disco_musica.core.config import ProductionConfig
 
-2. **Audio-to-Music Generation**
-   ```python
-   from disco_musica import generate_from_audio
-   
-   # Generate music from existing audio
-   audio = generate_from_audio(
-       input_audio="path/to/input.wav",
-       style="disco",
-       strength=0.8
-   )
-   ```
+# Initialize model
+config = ProductionConfig(model_name="musicgen", device="cuda")
+model = ProductionModel(config)
 
-3. **MIDI-to-Music Generation**
-   ```python
-   from disco_musica import generate_from_midi
-   
-   # Generate music from MIDI file
-   audio = generate_from_midi(
-       midi_file="path/to/input.mid",
-       instruments=["bass", "drums", "synth"]
-   )
-   ```
+# Generate music
+output = await model.generate(
+    prompt="Create an upbeat disco track with funky bass",
+    duration_seconds=30
+)
+```
 
-### Model Fine-tuning (Training)
+### Time Series Analysis
 
-1. **Prepare Dataset**
-   ```python
-   from disco_musica import prepare_dataset
-   
-   # Prepare dataset for fine-tuning
-   dataset = prepare_dataset(
-       data_dir="path/to/music/files",
-       format="audio",
-       split_ratio=[0.8, 0.1, 0.1]
-   )
-   ```
+```python
+from disco_musica.interfaces.time_series import TimeSeriesInterface
+from disco_musica.data.storage import TimeSeriesStorage
 
-2. **Fine-tune Model**
-   ```python
-   from disco_musica import fine_tune_model
-   
-   # Fine-tune model on custom dataset
-   model = fine_tune_model(
-       base_model="musicgen",
-       dataset=dataset,
-       epochs=10,
-       batch_size=32
-   )
-   ```
+# Initialize interface
+storage = TimeSeriesStorage()
+interface = TimeSeriesInterface(storage)
+
+# Analyze metrics
+analysis = await interface.analyze_metric(
+    metric_id="training_loss",
+    start_time="2024-01-01",
+    end_time="2024-03-15"
+)
+
+# Detect patterns
+patterns = await interface.detect_patterns(
+    metric_id="model_performance",
+    pattern_type="seasonal",
+    window_size=24
+)
+```
+
+### Vector Search
+
+```python
+from disco_musica.interfaces.vector import VectorSearchInterface
+from disco_musica.models.vector import VectorEmbeddingModel
+
+# Initialize interface
+model = VectorEmbeddingModel()
+interface = VectorSearchInterface(model)
+
+# Search similar items
+results = await interface.search(
+    query="upbeat electronic music with strong bass",
+    top_k=10
+)
+```
 
 ## Project Structure
 
 ```
 disco-musica/
-├── data/               # Data storage
-│   ├── raw/           # Raw input data
-│   ├── processed/     # Processed data
-│   └── models/        # Trained models
-├── docs/              # Documentation
-│   ├── api/          # API documentation
-│   ├── guides/       # User guides
-│   └── examples/     # Example notebooks
-├── modules/           # Core functional modules
-│   ├── core/         # Core functionality
-│   ├── interfaces/   # UI and API interfaces
-│   └── services/     # Service modules
-├── notebooks/         # Jupyter notebooks
-├── tests/            # Unit tests
-├── utils/            # Utility functions
-├── requirements.txt  # Python dependencies
-├── setup.py          # Installation script
-├── LICENSE           # License information
-└── README.md         # Project overview
+├── modules/
+│   ├── core/              # Core functionality and base classes
+│   ├── data/             # Data storage and management
+│   │   ├── storage/      # Storage implementations
+│   │   └── processing/   # Data processing utilities
+│   ├── interfaces/       # Interface implementations
+│   │   ├── logic_pro/    # Logic Pro integration
+│   │   ├── time_series/  # Time series analytics
+│   │   └── vector/       # Vector search
+│   ├── models/          # Model implementations
+│   │   ├── production/   # Music generation
+│   │   ├── mastering/    # Audio mastering
+│   │   ├── vector/       # Embeddings
+│   │   └── time_series/  # Time series analysis
+│   └── services/        # Service implementations
+├── docs/                # Documentation
+├── tests/              # Unit tests
+├── requirements.txt    # Python dependencies
+└── README.md          # Project overview
 ```
 
 ## Documentation
 
-- [API Documentation](docs/api/README.md)
-- [User Guides](docs/guides/README.md)
-- [Example Notebooks](docs/examples/README.md)
-- [Contributing Guidelines](docs/contributing.md)
+- [Developer Guide](docs/developer_guide.md): Comprehensive technical documentation
+- [System Flows](docs/flows.md): Detailed system workflows
+- [Research Notes](docs/research/): Technical research and methodology
 
 ## Contributing
 
-We welcome contributions from the community! Please see our [Contribution Guidelines](docs/contributing.md) for more information.
+We welcome contributions! Please see our [Developer Guide](docs/developer_guide.md) for detailed information about the system architecture and development guidelines.
 
 ## License
 

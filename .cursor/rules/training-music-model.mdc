@@ -3,690 +3,274 @@ description: training guide
 globs: 
 alwaysApply: false
 ---
-# Training Music Generation Models: Strategies and Best Practices
-
-## Introduction
-
-This document provides comprehensive guidance on training, fine-tuning, and adapting AI music generation models within the Disco Musica framework. It outlines strategies for data preparation, model selection, training methodologies, and evaluation techniques to achieve high-quality music generation across various input modalities.
-
-## Data Preparation
-
-### Dataset Requirements
-
-Effective training of music generation models requires carefully curated datasets with the following characteristics:
-
-1. **Diversity**: Include a wide range of musical styles, genres, instrumentation, and compositional approaches.
-2. **Quality**: Use high-quality recordings with minimal noise, appropriate mixing, and clear articulation.
-3. **Consistency**: Maintain consistent audio format, sample rate, bit depth, and normalization across the dataset.
-4. **Metadata**: Include rich metadata like genre, mood, tempo, key, instrumentation, and recording context.
-5. **Quantity**: Provide sufficient examples for each category or style to allow for generalization.
-
-### Data Processing Pipeline
-
-#### Audio Preprocessing
-
-1. **Format Standardization**
-   - Convert all audio to a consistent format (typically WAV)
-   - Standardize sample rate (44.1 kHz or 48 kHz)
-   - Normalize bit depth (16-bit or 24-bit)
-
-2. **Quality Enhancement**
-   - Apply gentle noise reduction
-   - Normalize levels (typically to -14 LUFS for modern content)
-   - Remove silent sections at beginning and end
-   - Apply fade in/out to avoid clicks and pops
-
-3. **Feature Extraction**
-   - Generate mel spectrograms
-   - Extract MFCCs, chroma features, spectral contrast
-   - Calculate rhythmic features (onset strength, tempo)
-   - Compute loudness and dynamic range metrics
-
-4. **Segmentation**
-   - Split longer tracks into training segments (typically 10-30 seconds)
-   - Ensure segments contain complete musical phrases
-   - Create overlapping segments to maintain context
-   - Balance segment lengths across the dataset
-
-#### MIDI Preprocessing
-
-1. **Structure Standardization**
-   - Ensure consistent time signature representation
-   - Normalize tempo information
-   - Quantize note timings to a consistent grid
-   - Standardize velocity ranges
-
-2. **Tokenization**
-   - Convert MIDI events to token sequences
-   - Include note on/off, velocity, program changes, and control messages
-   - Implement consistent token vocabulary
-   - Add special tokens for sequence boundaries
-
-3. **Augmentation**
-   - Apply pitch transposition (within reasonable ranges)
-   - Perform tempo variation (±20% from original)
-   - Generate velocity variations
-   - Create rhythmic variations (swing, straighten, etc.)
-
-### Data Augmentation Strategies
-
-1. **Pitch Shifting**
-   - Transpose audio up/down by 1-3 semitones
-   - Preserve timbre characteristics when possible
-   - For MIDI, transpose by up to an octave
-
-2. **Time Stretching**
-   - Adjust tempo by ±10-20% without affecting pitch
-   - Preserve rhythmic integrity and groove
-   - Apply different stretching algorithms based on content
-
-3. **Dynamic Processing**
-   - Apply subtle compression or expansion
-   - Adjust overall loudness levels
-   - Modify dynamic contours while preserving musical intent
-
-4. **Instrumentation Variation**
-   - For MIDI, swap instrument sounds within similar families
-   - For multi-track audio, adjust relative levels between instruments
-   - Apply different virtual instrument renderings
-
-5. **Style Transfer**
-   - Apply characteristics of one genre to pieces from another
-   - Modify rhythmic patterns while maintaining harmony
-   - Adjust timbral characteristics across styles
-
-### Dataset Organization
-
-1. **Directory Structure**
-   ```
-   dataset/
-   ├── audio/
-   │   ├── raw/                 # Original unprocessed files
-   │   ├── processed/           # Standardized, cleaned files
-   │   └── features/            # Extracted features
-   ├── midi/
-   │   ├── raw/                 # Original MIDI files
-   │   ├── tokenized/           # Tokenized representations
-   │   └── augmented/           # Augmented variations
-   ├── multimodal/              # Paired data (audio+MIDI, text+audio)
-   └── metadata/                # JSON files with annotations
-   ```
-
-2. **Data Splitting**
-   - Training set: 80%
-   - Validation set: 10%
-   - Test set: 10%
-   - Ensure representative distribution across splits
-   - Maintain artist/album separation between splits to prevent data leakage
-
-3. **Metadata Schema**
-   ```json
-   {
-     "id": "unique_identifier",
-     "file_path": "path/to/audio.wav",
-     "duration": 30.5,
-     "sample_rate": 44100,
-     "channels": 2,
-     "genre": ["jazz", "fusion"],
-     "instruments": ["piano", "bass", "drums"],
-     "tempo": 120,
-     "key": "Cmaj",
-     "mood": ["energetic", "complex"],
-     "year": 2018,
-     "source": "original_dataset_name",
-     "split": "train",
-     "features": {
-       "spectral_centroid_mean": 2145.7,
-       "tempo_confidence": 0.87,
-       "dynamic_range": 14.3
-     }
-   }
-   ```
-
-## Model Selection and Architecture
-
-### Pre-trained Models for Music Generation
-
-1. **MusicGen**
-   - Architecture: Transformer-based audio generation
-   - Strengths: High-quality music from text descriptions
-   - Weaknesses: Limited control over musical elements
-   - Use case: Text-to-music generation
-
-2. **AudioGen**
-   - Architecture: Diffusion-based audio synthesis
-   - Strengths: Natural sound textures and transitions
-   - Weaknesses: Longer generation time
-   - Use case: Sound effects and ambient music
-
-3. **Stable Audio**
-   - Architecture: Diffusion for audio generation
-   - Strengths: High audio quality and diversity
-   - Weaknesses: Parameter tuning complexity
-   - Use case: High-fidelity music production
-
-4. **MT3 (MIDI + Audio)**
-   - Architecture: Encoder-decoder for multi-track music
-   - Strengths: Handles symbolic and audio representations
-   - Weaknesses: Complex architecture, high resource requirements
-   - Use case: Multi-track music generation and transcription
-
-### Architecture Selection Criteria
-
-1. **Input Modality Compatibility**
-   - Text input: Transformer encoders for text understanding
-   - Audio input: Convolutional or transformer encoders for audio feature extraction
-   - MIDI input: Sequence models for symbolic music representation
-   - Image input: Vision encoders for visual feature extraction
-
-2. **Output Quality Requirements**
-   - Audio quality: Sample rate, frequency range, dynamic range
-   - Musical coherence: Phrase structure, harmonic progression, rhythm consistency
-   - Stylistic accuracy: Genre characteristics, instrumental idioms
-
-3. **Resource Constraints**
-   - Training compute requirements
-   - Inference latency targets
-   - Memory usage during generation
-   - Deployment environment limitations
-
-4. **Control Granularity**
-   - Global control (genre, mood, instrumentation)
-   - Structural control (form, sections, progression)
-   - Local control (melody, harmony, rhythm details)
-   - Real-time parameter adjustment capabilities
-
-### Custom Architecture Considerations
-
-1. **Encoder Design**
-   - Text encoder: Transformer or BERT-based
-   - Audio encoder: CNN or Transformer with attention
-   - MIDI encoder: Recurrent or transformer-based
-   - Multimodal fusion: Cross-attention mechanisms
-
-2. **Decoder Options**
-   - Autoregressive: Transformer decoder for sequential generation
-   - Non-autoregressive: Diffusion models for parallel generation
-   - Hybrid: Combination of autoregressive and non-autoregressive components
-
-3. **Conditioning Mechanisms**
-   - Global conditioning: Style, genre, mood embedding
-   - Cross-attention: Dynamic conditioning based on input features
-   - Classifier-free guidance: Control over generation characteristics
-
-## Training Methodologies
-
-### Training Strategies
-
-1. **Full Model Training**
-   - Use case: Training from scratch with large datasets
-   - Resource requirements: High (multiple GPUs, days/weeks)
-   - Data requirements: 50+ hours of high-quality audio
-   - Best practices:
-     - Implement gradient checkpointing to reduce memory usage
-     - Use mixed precision training (FP16/BF16)
-     - Implement distributed training across multiple GPUs/nodes
-     - Save frequent checkpoints
-     - Monitor validation metrics closely to prevent overfitting
-
-2. **Fine-tuning**
-   - Use case: Adapting pre-trained models to specific styles or domains
-   - Resource requirements: Moderate (single/dual GPU, hours/days)
-   - Data requirements: 1-10 hours of domain-specific audio
-   - Best practices:
-     - Start with lower learning rates (1e-5 to 1e-4)
-     - Implement learning rate warmup and decay
-     - Use weight decay for regularization
-     - Monitor for catastrophic forgetting
-     - Evaluate on original model test set to ensure general capabilities are maintained
-
-3. **Parameter-Efficient Fine-tuning**
-   - Use case: Quick adaptation with limited data and compute
-   - Resource requirements: Low (single GPU, hours)
-   - Data requirements: 30+ minutes of target style audio
-   - Techniques:
-     - LoRA (Low-Rank Adaptation): Add trainable low-rank matrices to transformer layers
-     - Adapters: Insert small trainable modules between existing layers
-     - Prompt tuning: Optimize continuous prompt embeddings
-     - Selective fine-tuning: Update only specific layers
-
-### Training Hyperparameters
-
-1. **Learning Rate Selection**
-   - Full training: 5e-4 to 1e-3 with cosine decay
-   - Fine-tuning: 1e-5 to 5e-5 with linear decay
-   - Parameter-efficient: 1e-4 to 5e-4 for adapter parameters
-
-2. **Batch Size Considerations**
-   - Target the largest batch size that fits in memory
-   - Use gradient accumulation for effective larger batches
-   - Balance between speed and optimization stability
-   - Typical ranges: 16-128 depending on model size and GPU memory
-
-3. **Optimization Algorithm**
-   - AdamW: Preferred for most training scenarios
-   - Lion: More memory-efficient, can work well for larger models
-   - SGD with momentum: For specific fine-tuning scenarios
-
-4. **Regularization Techniques**
-   - Weight decay: 0.01-0.1 for full models, 0.001-0.01 for fine-tuning
-   - Dropout: 0.1-0.3 depending on model size and dataset size
-   - Data augmentation: Apply during training to prevent overfitting
-   - Gradient clipping: Typically 1.0-5.0 to prevent exploding gradients
-
-### Loss Functions
-
-1. **Spectral Losses**
-   - Multi-resolution STFT loss: Captures time-frequency characteristics
-   - Mel-spectrogram loss: Perceptually weighted frequency representation
-   - Application: Direct audio generation models
-
-2. **Adversarial Losses**
-   - Discriminator networks to distinguish real vs. generated audio
-   - Feature matching loss for perceptual similarity
-   - Application: Realistic timbre and texture generation
-
-3. **Reconstruction Losses**
-   - L1/L2 loss for waveform matching
-   - KL divergence for latent space regularization
-   - Application: Autoencoder-based models and diffusion models
-
-4. **Music-Specific Losses**
-   - Rhythm consistency loss
-   - Harmonic structure loss
-   - Melodic contour loss
-   - Application: Enhancing musical coherence and quality
-
-### Training Progress Monitoring
-
-1. **Essential Metrics**
-   - Training/validation loss curves
-   - Audio quality metrics (e.g., FID for spectrograms)
-   - Musical feature correlation (tempo, key, instrumentation accuracy)
-   - Resource utilization (GPU memory, throughput)
-
-2. **Visualization Tools**
-   - TensorBoard for loss curves and audio samples
-   - Weights & Biases for experiment tracking
-   - Custom dashboards for music-specific metrics
-
-3. **Early Stopping Criteria**
-   - Validation loss plateau (patience: 5-10 epochs)
-   - Audio quality metrics degradation
-   - Resource constraints (time/compute budget)
-
-4. **Checkpoint Management**
-   - Save model at regular intervals (every 1000-5000 steps)
-   - Keep top-k models based on validation metrics
-   - Save optimizer state for training resumption
-   - Implement model weight averaging for final checkpoint
-
-## Model Adaptation Techniques
-
-### Domain Adaptation
-
-1. **Style Transfer Learning**
-   - Train on source domain, fine-tune on target domain
-   - Implement gradual unfreezing of layers
-   - Use larger learning rates for style-specific layers
-   - Preserve general music understanding while adapting style
-
-2. **Cross-Domain Mapping**
-   - Train encoders/decoders for different domains separately
-   - Implement domain translation networks
-   - Use cycle consistency losses to maintain content
-   - Apply domain adversarial training
-
-### Few-Shot Learning
-
-1. **Prompt Engineering**
-   - Develop effective text/audio prompts for conditioning
-   - Create prompt templates for consistent results
-   - Implement prompt ensembling for robust generation
-   - Fine-tune prompt weights for specific domains
-
-2. **Meta-Learning Approaches**
-   - Model-Agnostic Meta-Learning (MAML) for quick adaptation
-   - Reptile algorithm for simplified meta-learning
-   - Implement episodic training with task sampling
-   - Maintain a task library for diverse adaptation
-
-3. **Transfer Learning from Related Domains**
-   - Leverage speech models for singing voice synthesis
-   - Use natural sound models for instrumental timbre
-   - Adapt language models for musical structure
-   - Fine-tune across modalities (text → music, image → music)
-
-### Continual Learning
-
-1. **Rehearsal Mechanisms**
-   - Store representative samples from previous tasks
-   - Implement experience replay during training
-   - Balance new and old data in mini-batches
-   - Use dynamic memory management for efficient storage
-
-2. **Regularization Approaches**
-   - Elastic Weight Consolidation (EWC) to prevent forgetting
-   - Learning without Forgetting (LwF) techniques
-   - Knowledge distillation from previous model versions
-   - Implement importance-based parameter protection
-
-3. **Architecture Adaptation**
-   - Progressive neural networks with lateral connections
-   - Dynamically expandable networks
-   - Task-specific adapters with shared base model
-   - Conditional computation paths based on domain
-
-## Model Evaluation
-
-### Objective Evaluation Metrics
-
-1. **Audio Quality Metrics**
-   - Fréchet Audio Distance (FAD)
-   - Kullback-Leibler Divergence between spectral distributions
-   - Signal-to-Noise Ratio (SNR)
-   - Spectral Convergence
-
-2. **Musical Feature Analysis**
-   - Tempo accuracy and stability
-   - Key and chord detection accuracy
-   - Melodic complexity measures
-   - Rhythm consistency and groove analysis
-
-3. **Computational Efficiency**
-   - Inference time per second of generated audio
-   - Memory usage during generation
-   - Model size and parameter count
-   - Hardware compatibility assessment
-
-### Subjective Evaluation
-
-1. **Human Evaluation Protocols**
-   - Mean Opinion Score (MOS) testing
-   - AB/ABX comparison tests
-   - MUSHRA (MUltiple Stimuli with Hidden Reference and Anchor) tests
-   - Specialized musician evaluation for technical aspects
-
-2. **Evaluation Dimensions**
-   - Overall audio quality
-   - Musical coherence and structure
-   - Stylistic authenticity
-   - Emotional expression
-   - Creativity and originality
-   - Technical execution (rhythm, harmony, etc.)
-
-3. **Listening Test Design**
-   - Double-blind testing
-   - Randomized presentation order
-   - Multiple evaluator demographics
-   - Consistent listening environment specifications
-
-### Benchmark Datasets
-
-1. **Standard Evaluation Sets**
-   - MusicCaps: Music with text descriptions
-   - Lakh MIDI Dataset: Symbolic music evaluation
-   - Free Music Archive: Style-specific evaluation
-   - MAESTRO: Piano performance evaluation
-
-2. **Custom Evaluation Scenarios**
-   - Multi-instrument arrangement generation
-   - Style transfer across distant genres
-   - Long-form composition coherence
-   - Emotional expression accuracy
-
-## Implementation Guidelines
-
-### Training Infrastructure Setup
-
-1. **Hardware Requirements**
-   - GPU: NVIDIA A100, A6000, or similar (min. 24GB VRAM)
-   - CPU: 16+ cores for data preprocessing
-   - RAM: 64GB+ for large dataset handling
-   - Storage: 2TB+ SSD for datasets and checkpoints
-   - Network: 10Gbps+ for distributed training
-
-2. **Software Environment**
-   - Base: Python 3.8+, CUDA 11.7+
-   - ML frameworks: PyTorch 2.0+, TensorFlow 2.10+ (optional)
-   - Audio processing: librosa, torchaudio, soundfile
-   - Data management: pandas, h5py, lmdb
-   - Experiment tracking: wandb, tensorboard
-
-3. **Cloud Setup**
-   - Google Colab Pro: For small experiments and prototyping
-   - AWS p3/p4 instances: For production training
-   - Azure NC-series: Alternative cloud option
-   - Configure persistent storage across sessions
-
-### Training Workflow Implementation
-
-1. **Data Preparation Phase**
-   ```python
-   # Example preprocessing pipeline
-   def preprocess_audio_dataset(input_dir, output_dir, sample_rate=44100):
-       os.makedirs(output_dir, exist_ok=True)
-       audio_files = glob.glob(os.path.join(input_dir, "*.wav"))
-       
-       for audio_file in tqdm(audio_files):
-           # Load audio
-           y, sr = librosa.load(audio_file, sr=None)
-           
-           # Resample if needed
-           if sr != sample_rate:
-               y = librosa.resample(y, orig_sr=sr, target_sr=sample_rate)
-           
-           # Normalize audio
-           y = librosa.util.normalize(y)
-           
-           # Generate mel spectrogram
-           mel_spec = librosa.feature.melspectrogram(
-               y=y, sr=sample_rate, n_fft=2048, hop_length=512, n_mels=128
-           )
-           mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
-           
-           # Save processed audio and features
-           basename = os.path.basename(audio_file)
-           sf.write(
-               os.path.join(output_dir, basename),
-               y, sample_rate
-           )
-           np.save(
-               os.path.join(output_dir, f"{os.path.splitext(basename)[0]}_mel.npy"),
-               mel_spec_db
-           )
-   ```
-
-2. **Training Script Structure**
-   ```python
-   # Example training script outline
-   def train_music_model(
-       model_type,
-       dataset_path,
-       output_dir,
-       batch_size=16,
-       learning_rate=1e-4,
-       num_epochs=50,
-       device="cuda",
-   ):
-       # Initialize model
-       model = initialize_model(model_type, device)
-       
-       # Load dataset
-       train_dataset, val_dataset = load_datasets(dataset_path)
-       train_loader = DataLoader(
-           train_dataset, batch_size=batch_size, shuffle=True, num_workers=4
-       )
-       val_loader = DataLoader(
-           val_dataset, batch_size=batch_size, shuffle=False, num_workers=4
-       )
-       
-       # Initialize optimizer
-       optimizer = torch.optim.AdamW(
-           model.parameters(), lr=learning_rate, weight_decay=0.01
-       )
-       
-       # Initialize scheduler
-       scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-           optimizer, T_max=num_epochs, eta_min=1e-6
-       )
-       
-       # Initialize loss function
-       loss_fn = MusicGenerationLoss()
-       
-       # Initialize logger
-       logger = init_wandb_logger(model_type)
-       
-       # Training loop
-       for epoch in range(num_epochs):
-           # Train epoch
-           train_loss = train_one_epoch(
-               model, train_loader, optimizer, loss_fn, device
-           )
-           
-           # Validate epoch
-           val_loss, audio_samples = validate_one_epoch(
-               model, val_loader, loss_fn, device
-           )
-           
-           # Update scheduler
-           scheduler.step()
-           
-           # Log metrics and samples
-           log_training_progress(
-               logger, epoch, train_loss, val_loss, audio_samples
-           )
-           
-           # Save checkpoint
-           save_checkpoint(
-               model, optimizer, scheduler, epoch, val_loss, output_dir
-           )
-   ```
-
-3. **Evaluation Script Structure**
-   ```python
-   # Example evaluation script outline
-   def evaluate_model(
-       model_path,
-       test_dataset_path,
-       output_dir,
-       batch_size=16,
-       device="cuda",
-   ):
-       # Load model
-       model = load_model_from_checkpoint(model_path, device)
-       
-       # Load test dataset
-       test_dataset = load_test_dataset(test_dataset_path)
-       test_loader = DataLoader(
-           test_dataset, batch_size=batch_size, shuffle=False, num_workers=4
-       )
-       
-       # Initialize metrics
-       metrics = initialize_evaluation_metrics()
-       
-       # Generate and evaluate
-       all_results = []
-       for batch in tqdm(test_loader):
-           # Generate audio
-           generated_audio = generate_audio(model, batch, device)
-           
-           # Calculate metrics
-           batch_metrics = calculate_batch_metrics(
-               generated_audio, batch["reference"], metrics
-           )
-           
-           # Save generated samples
-           save_audio_samples(generated_audio, batch["metadata"], output_dir)
-           
-           all_results.append(batch_metrics)
-       
-       # Aggregate and report results
-       final_metrics = aggregate_metrics(all_results)
-       generate_evaluation_report(final_metrics, output_dir)
-   ```
-
-### Fine-tuning Guidelines
-
-1. **Recommended Settings by Model Size**
-
-   | Model Size | Parameters | Batch Size | Learning Rate | LoRA Rank | Training Time |
-   |------------|------------|------------|---------------|-----------|--------------|
-   | Small      | <500M      | 32-64      | 5e-5          | 4-8       | 2-8 hours    |
-   | Medium     | 500M-2B    | 16-32      | 2e-5          | 8-16      | 8-24 hours   |
-   | Large      | 2B-10B     | 4-16       | 1e-5          | 16-32     | 1-3 days     |
-   | XL         | >10B       | 1-4        | 5e-6          | 32-64     | 3-7 days     |
-
-2. **LoRA Implementation**
-   ```python
-   # Example LoRA adapter implementation
-   def add_lora_adapters(model, rank=8, alpha=16):
-       # Identify attention layers
-       for name, module in model.named_modules():
-           if isinstance(module, nn.MultiheadAttention):
-               # Add LoRA adapters to query and value projections
-               module.q_proj = LoRAAdapter(
-                   module.q_proj, rank=rank, alpha=alpha
-               )
-               module.v_proj = LoRAAdapter(
-                   module.v_proj, rank=rank, alpha=alpha
-               )
-       return model
-   
-   class LoRAAdapter(nn.Module):
-       def __init__(self, base_layer, rank=8, alpha=16):
-           super().__init__()
-           self.base_layer = base_layer
-           self.rank = rank
-           self.alpha = alpha
-           
-           # Get dimensions
-           if isinstance(base_layer, nn.Linear):
-               in_dim = base_layer.in_features
-               out_dim = base_layer.out_features
-           else:
-               raise ValueError("Unsupported layer type")
-           
-           # Initialize LoRA matrices
-           self.lora_A = nn.Parameter(torch.zeros(rank, in_dim))
-           self.lora_B = nn.Parameter(torch.zeros(out_dim, rank))
-           
-           # Initialize with random weights
-           nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-           nn.init.zeros_(self.lora_B)
-           
-           # LoRA scaling factor
-           self.scaling = alpha / rank
-           
-       def forward(self, x):
-           # Original layer computation
-           base_output = self.base_layer(x)
-           
-           # LoRA path
-           lora_output = (x @ self.lora_A.T @ self.lora_B.T) * self.scaling
-           
-           # Combine outputs
-           return base_output + lora_output
-   ```
-
-3. **Hyperparameter Tuning Strategy**
-   - Start with default parameters from table above
-   - Perform initial runs with 10-20% of data to find stable learning rates
-   - Use learning rate finder to determine optimal range
-   - Conduct grid search over key parameters (learning rate, LoRA rank)
-   - Implement early stopping with validation metrics
-   - Try different regularization settings based on dataset size
-
-## Conclusion
-
-Training effective music generation models requires careful attention to data quality, model architecture, training methodology, and evaluation processes. By following the guidelines and best practices outlined in this document, developers can create high-quality music generation systems that balance creative expression with technical fidelity.
-
-The most successful implementations will typically:
-
-1. Invest heavily in data preprocessing and augmentation
-2. Leverage pre-trained models with parameter-efficient fine-tuning
-3. Implement robust evaluation pipelines combining objective and subjective metrics
-4. Balance computational efficiency with model expressiveness
-5. Provide intuitive controls for users to shape the generated music
-
-As the field continues to evolve, staying current with the latest research and continually refining these approaches will be essential for maintaining state-of-the-art music generation capabilities within the Disco Musica platform.
+. Project Goals and Philosophy
+
+Goal: Develop an open-source, multimodal AI application ("Disco Musica") for generating custom music based on trained artist style.
+
+Design Philosophy:
+Data Efficiency: Preserve and reuse all generated data.
+Universal Access: Standardized API for data and model access.
+Scalability: Design components for horizontal scaling.
+Modularity: Create self-contained, independently evolving components.
+Interoperability: Ensure consistent interfaces between components.
+II. System Architecture
+
+Hybrid Compute Architecture:
+Local inference for real-time interaction.
+Cloud-based training (Google Colab, AWS, Azure) for intensive computation.
+Core Layers:
+Data Foundation Layer:
+Universal project repository.
+Standardized data formats and access patterns.
+Resource tracking, indexing, versioning, and caching.
+Service Layer:
+Generation Service: Creates musical content.
+Model Service: Manages model lifecycle and execution.
+Output Service: Handles result processing and presentation.
+Resource Service: Coordinates resource access.
+Integration Service: Manages external tool connections (e.g., Logic Pro).
+Application Layer:
+User interface components.
+Workflow orchestration and session management.
+User preferences and customization.
+Data Flow Pattern:
+Resource Acquisition: Access required inputs from the data layer.
+Processing Pipeline: Apply transformations through configurable stages.
+Result Persistence: Store all outputs in the universal data layer.
+Notification: Alert dependent components of new/updated resources.
+III. Unified Process Flows (Detailed)
+
+Each flow consumes resources, processes them, produces new resources, and makes them available.
+
+A. Resource Management Flows
+
+Flow #0.1: Profile Updating
+Purpose: Extract and analyze project data to maintain up-to-date project profiles.
+Input: Logic project file (.logicx).
+Process:
+Data Extraction: Parse Logic project file (metadata, MIDI, audio, lyrics, channel info).
+Feature Extraction and Preprocessing:
+Audio: Acoustic features (MFCCs, spectral centroid, chroma), silence removal, normalization.
+MIDI: Quantization, piano-roll conversion, chord/harmonic extraction.
+Lyrics: Cleaning, tokenization, sentiment analysis.
+Project Context: Track volume levels, density, complexity.
+Musical Analysis: Chord/harmonic analysis (Librosa, Music21), genre/style classification (pre-trained models).
+Database Update: Store extracted data and analysis results; update project profile.
+Output: Updated project profile in the database.
+Technical Implementation:
+Core Libraries: Librosa, Music21, PyTorch.
+ML Models: Genre classification, emotion detection, style analysis.
+Database Integration: PostgreSQL or MongoDB.
+Flow #0.2: Project Importing
+Purpose: Import a new project, extract its data, and create a structured project environment.
+Input: Logic project file (.logicx).
+Process:
+Database Entry Creation: Generate unique project ID; create database entry.
+Data Extraction: (Same as Flow #0.1).
+Feature Extraction and Preprocessing: (Same as Flow #0.1).
+Project Directory Structure: Create standardized project directory; organize extracted files.
+Storage and Organization: Store files; create references between database and file system; generate metadata indexes.
+Initial Analysis: Chord/harmonic analysis, genre/emotion/style classification.
+Output: Complete project profile in database and organized project directory.
+Technical Implementation:
+File Operations: Python's os and pathlib.
+Data Processing: NumPy, Pandas, Librosa.
+Database Operations: SQLAlchemy or PyMongo.
+B. Audio Processing Flows
+
+Flow #1: Project Macro Quantizing
+Purpose: Ensure rhythmic consistency by aligning audio and MIDI to a consistent grid.
+Input: Logic project file.
+Process:
+BPM Standardization: Analyze tempo variations; establish consistent BPM.
+MIDI Quantization: Apply intelligent quantization to MIDI tracks.
+Audio Transient Alignment: Detect audio transients; align transients to the grid.
+Project Timeline Adjustment: Shift project start; ensure track alignment.
+Project Saving: Save quantized project; create backup of original project.
+Output: Quantized Logic project file.
+Technical Implementation:
+Audio Analysis: Librosa onset detection.
+Time Stretching: Elastique or similar high-quality algorithms.
+MIDI Processing: Mido, Music21.
+Flow #2: Generate New Tracks Following Song Harmony
+Purpose: Create new musical elements that complement the existing harmony structure.
+Input: Logic project file, analyzed harmony.
+Process:
+Harmony Analysis: Extract chord progressions, harmonic structures; create harmonic context map.
+Data Preprocessing: Convert harmony data; prepare conditioning parameters; generate embedding vectors.
+Generative Model Application:
+Vocal Melody Generation: Generate 5 variations (transformer-based models).
+Lead Line Generation: Generate 5 variations.
+Harmonizing Melody Generation: Generate 5 variations.
+Drum Pattern Generation: Generate 5 variations.
+MIDI Integration: Convert generated ideas to MIDI; apply MIDI CC data; organize tracks; assign virtual instruments.
+Output: Logic project with new MIDI tracks.
+Technical Implementation:
+Harmony Analysis: Music21, custom chord detection.
+Generative Models: Transformer-based MIDI generation (MusicGen, MusicLM).
+MIDI Integration: Mido, custom MIDI utilities.
+Flow #3: Tune Vocals
+Purpose: Apply intelligent pitch correction to vocal tracks that respects musical context.
+Input: Vocal audio track, project key, harmony.
+Process:
+Pitch Analysis: Detect fundamental frequencies; identify note transitions and pitch drift; create pitch correction map.
+Preprocessing: Separate vocal from background; normalize volume; apply pre-filtering; segment vocal into phrases.
+Auto-Tune Application: Apply context-aware pitch correction; generate multiple tuned versions with varying parameters.
+Results Integration: Add processed vocal tracks; organize variations; maintain processing metadata.
+Output: Logic project with tuned vocal tracks.
+Technical Implementation:
+Pitch Detection: CREPE or pYIN algorithms.
+Pitch Correction: Custom implementation with PyTorch.
+Audio Processing: Librosa, PyDub.
+C. Model Training and Inference Flows
+
+Flow #4: Generation Model Training and Inference
+Purpose: Create and apply models that can generate musical content from various inputs.
+Training Process:
+Data Collection and Curation: Collect diverse training data (Logic project files, audio, MIDI, lyrics); apply quality filtering; create training/validation/test splits.
+Data Preprocessing and Feature Extraction:
+Audio: Format conversion, spectral feature extraction (Mel spectrograms, MFCCs), normalization, augmentation.
+MIDI: Standardization, token sequences, augmentation.
+Text: Cleaning, normalization, tokenization, embeddings.
+Model Architecture Selection:
+MIDI Generation: Transformer-based sequence models, RNNs with attention.
+Audio Generation: VQ-VAE, WaveNet, diffusion models.
+Project Structure: Graph Neural Networks, Transformers.
+Training Configuration:
+Hyperparameters: Learning rates (Full training: 5e-4 to 1e-3, Fine-tuning: 1e-5 to 5e-5), batch sizes (16-128), optimization algorithm (AdamW with weight decay).
+Training Context: Include musical parameters (key, tempo, chord structure), arrangement and instrumentation, stylistic and genre information.
+Compute Environment: Google Colab, checkpoint saving, resumable training.
+Training Execution and Monitoring: Execute training loops; monitor metrics; implement early stopping and learning rate scheduling; save checkpoints.
+Inference Process:
+Input Processing: Accept diverse input modalities (text, audio, MIDI, images, video); convert to model-compatible representations.
+Model Selection and Application: Select pre-trained or fine-tuned model; configure generation parameters (temperature, sampling strategy, output length, stylistic controls).
+Output Generation and Post-processing: Generate raw output; convert to appropriate format (MIDI or audio); apply post-processing.
+Output: Generated MIDI or audio files.
+Technical Implementation:
+Training Framework: PyTorch (primary), TensorFlow (supported).
+Model Architectures: Transformers, VAEs, Diffusion models.
+Optimization: Model quantization, ONNX runtime.
+Inference: Local CPU/GPU inference, API integration.
+Flow #5: Production Model Training and Inference
+Purpose: Create and apply models that predict professional-quality effect chains for audio tracks.
+Training Process:
+Data Collection: Gather diverse audio source material (raw recordings, effect chains data, mixing session parameters, sound design examples); organize by instrument type and genre.
+Data Preprocessing:
+Audio Feature Extraction: Spectral and temporal features, instrument-specific features, context-aware features.
+Effect Parameter Normalization: Standardize effect parameters; create normalized parameter spaces.
+Data Augmentation: Apply controlled variations to source audio.
+Model Architecture Selection: Regression models, neural networks, sequence models.
+Training Configuration: Configure hyperparameters; implement loss functions for audio quality assessment.
+Training Execution: Train specialized models; implement curriculum learning.
+Inference Process:
+Audio Analysis: Analyze input audio track characteristics; extract relevant features.
+Effect Chain Generation: Select appropriate pre-trained models; generate effect chain parameters; create multiple parameter variations.
+Effect Application: Apply generated effect chain to audio track copy; process through Logic Pro's built-in plugins; enable parameter fine-tuning.
+Output: Audio track with applied effect chain.
+Technical Implementation:
+Audio Analysis: Librosa, PyDub.
+Model Implementation: PyTorch, SciKit-Learn.
+Plugin Integration: Logic Pro API or scripting.
+Flow #6: Mastering Model Training and Inference
+Purpose: Create and apply models that automate professional-quality mastering for audio projects.
+Training Process:
+Data Collection: Gather paired audio examples (pre-mastered mixes, professionally mastered versions); organize by genre, style, and loudness target.
+Data Preprocessing:
+Audio Feature Extraction: Mastering-relevant features (dynamic range, spectral balance), loudness metrics.
+Mastering Parameter Normalization: Standardize parameters; create normalized parameter spaces.
+Data Augmentation: Create variations with different input levels.
+Model Architecture and Training: Develop regression models; implement specialized models; train with perceptual audio quality metrics.
+Inference Process:
+Mix Analysis: Analyze the final mix characteristics; measure loudness, dynamic range, spectral balance.
+Mastering Parameter Generation: Select appropriate pre-trained model; generate mastering chain parameters; optimize for platform-specific delivery.
+Mastering Application: Apply generated mastering chain using Logic Pro plugins; provide interactive controls for parameter adjustment.
+Output: Mastered Logic project.
+Technical Implementation:
+Audio Analysis: Loudness analysis (LUFS measurement).
+Parameter Prediction: Regression models, neural networks.
+Plugin Integration: Logic Pro API or scripting.
+IV. Universal Data Architecture
+
+Multi-Model Data Store:
+Document Store: MongoDB (flexible schema for project metadata, analysis results, and parameters).
+Relational Database: PostgreSQL (structured relationships, transactional integrity).
+Vector Database: Pinecone or Milvus (semantic search and similarity matching).
+Time-Series Database: InfluxDB or TimescaleDB (performance metrics, model training history, usage analytics).
+File System Integration: Object storage with metadata indexing (large binary assets).
+Core Resource Types:
+Base Resource Properties: resource_id, resource_type, creation_timestamp, modification_timestamp, version, parent_resources, tags, access_control.
+Resource-Specific Data Models: Detailed JSON schemas for Project Resources, Track Resources, Analysis Result Resources, Model Resources, and Generated Content Resources (see document for examples).
+Data Access Patterns:
+Direct Resource Access: Resource ID-based lookup.
+Graph-based Navigation: Traverse resource relationships.
+Search-based Discovery: Full-text search, semantic similarity search.
+Batch Processing Access: Efficient access patterns for large-scale operations.
+Scalability Considerations:
+Horizontal Scaling: Sharding strategies, distribution of vector operations, partitioning.
+Caching Hierarchy: In-memory cache, distributed cache, content-based caching.
+Asynchronous Processing: Event-driven updates, background indexing, lazy computation.
+Data Lifecycle Management: Automatic archiving, tiered storage, version pruning policies.
+V. Training Data Requirements
+
+Generation Model:
+Large MIDI Datasets (e.g., Lakh MIDI Dataset).
+Audio Datasets (e.g., Million Song Dataset, FreeSound).
+Logic Project Files.
+Lyrics Datasets.
+Production Model:
+Audio Recordings with corresponding effect chains.
+Sound Design Libraries.
+Mixing Sessions.
+Mastering Model:
+Before-and-After Mastering Pairs.
+Mastering Settings.
+VI. Inference Methods
+
+Generation Methods:
+Sampling Strategies (temperature-controlled sampling, top-k, beam search).
+Conditional Generation (harmony-constrained, style-guided, rhythm and tempo conditioning).
+Local Inference (Disco-diffusion style, optimized for real-time interaction).
+Production and Mastering Methods:
+Parameter Prediction (effect parameter regression, chain configuration optimization).
+Plugin Integration (Logic Pro API/scripting, non-destructive effect application).
+VII. User Interface (UI) Guidelines
+
+Core UI Requirements:
+Project Management (import, organization, status visualization).
+Analysis Visualization (chord/harmony charts, spectrograms, genre classification).
+Editor Integration (MIDI editing, audio editing, Logic Pro integration).
+Specialized UI Components:
+Generation Control (input type selection, parameter controls, real-time feedback).
+Parameter Control (intuitive sliders, preset management, A/B testing).
+Process Monitoring (progress indicators, process controls, error messages).
+User Experience Principles:
+Save and load user presets.
+Provide visual feedback for each step.
+Enable parameter fine-tuning.
+Support keyboard shortcuts.
+Clear documentation and help.
+VIII. Logic Pro Integration
+
+Plugin Architecture:
+Key Design Principles:
+Stock Features Only (uses only stock Logic Pro plugins).
+External AI Processing (complex AI computations occur in the external Disco-Musica application).
+Separation of Concerns (plugin handles Logic Pro integration; external application handles AI).
+Hardware Acceleration: Metal framework integration for Apple Silicon; GPU-accelerated processing.
+Communication Protocol:
+Data Exchange Format: Standardized JSON Structures (project metadata, MIDI modification instructions, audio effect parameters, automation data).
+Communication Channels: Socket-based Communication (local TCP/IP socket, binary message framing); File-based Exchange (JSON configuration files, temporary file exchange).
+Error Handling: Comprehensive error codes and descriptions; graceful fallback mechanisms.
+Plugin Components:
+MIDI Manipulation Module: Scripter-based implementation; MIDI generation capabilities.
+Audio Effect Control Module: Stock plugin manipulation; parameter automation.
+Project Modification Module: Track management; global project parameters.
+User Interface Component: Control Panel; parameter adjustment.
+Integration with Flows:
+Flow #0.1-0.2: Project Management Integration: Data Extraction (plugin extracts data; sends to backend; maintains synchronization).
+Flow #1: Project Macro Quantizing Integration: Quantization Application (plugin receives parameters; applies quantization to MIDI and audio).
+Flow #2: Generate New Tracks Integration: MIDI Track Creation (plugin receives MIDI data; creates new tracks; applies settings).
+Flow #3: Tune Vocals Integration: Pitch Correction Application (plugin applies pitch correction; receives parameters; creates multiple versions).
+Flow #4-6: Model Inference Integration: Effect Chain Application; Mastering Integration (plugin receives parameters; configures plugins; generates automation data).
+Performance Considerations: Latency Management; Resource Optimization; Error Resilience.
+This detailed development guide should provide a solid foundation for developers and code assistants working on the Disco-Musica project. Remember to refer to the specific documents for code snippets, further technical details, and evolving best practices.

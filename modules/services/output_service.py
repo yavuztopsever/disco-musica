@@ -10,15 +10,24 @@ import json
 import shutil
 import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, Any
 
 import numpy as np
 import matplotlib.pyplot as plt
 import librosa
 import librosa.display
+import logging
 
 from modules.core.config import config
 from modules.core.audio_processor import AudioProcessor
+from modules.core.resources.resource_manager import ResourceManager
+from modules.core.resources.generation_resource import GenerationResource
+from modules.core.processors.processor_manager import ProcessorManager
+from modules.exceptions.base_exceptions import (
+    ProcessingError,
+    ValidationError,
+    ResourceNotFoundError
+)
 
 
 class OutputService:
@@ -29,24 +38,29 @@ class OutputService:
     and exporting generated music outputs.
     """
     
-    def __init__(self):
+    def __init__(
+        self,
+        resource_manager: ResourceManager,
+        processor_manager: ProcessorManager,
+        output_dir: Union[str, Path]
+    ):
         """
         Initialize the OutputService.
-        """
-        self.output_dir = Path(config.get("paths", "output_dir", "outputs"))
-        self.audio_dir = self.output_dir / "audio"
-        self.midi_dir = self.output_dir / "midi"
-        self.metadata_dir = self.output_dir / "metadata"
-        self.visualization_dir = self.output_dir / "visualizations"
-        self.collections_dir = self.output_dir / "collections"
         
-        # Create directories if they don't exist
-        os.makedirs(self.output_dir, exist_ok=True)
-        os.makedirs(self.audio_dir, exist_ok=True)
-        os.makedirs(self.midi_dir, exist_ok=True)
-        os.makedirs(self.metadata_dir, exist_ok=True)
-        os.makedirs(self.visualization_dir, exist_ok=True)
-        os.makedirs(self.collections_dir, exist_ok=True)
+        Args:
+            resource_manager: Resource manager instance.
+            processor_manager: Processor manager instance.
+            output_dir: Directory for storing outputs.
+        """
+        self.resource_manager = resource_manager
+        self.processor_manager = processor_manager
+        self.output_dir = Path(output_dir)
+        
+        # Set up logging
+        self.logger = logging.getLogger(__name__)
+        
+        # Create output directories
+        self._ensure_directories()
         
         # Initialize audio processor
         self.audio_processor = AudioProcessor()
@@ -54,6 +68,21 @@ class OutputService:
         # Output registry
         self.registry = self._load_registry()
     
+    def _ensure_directories(self) -> None:
+        """
+        Ensure required directories exist.
+        """
+        # Main output directory
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Type-specific directories
+        (self.output_dir / "audio").mkdir(exist_ok=True)
+        (self.output_dir / "midi").mkdir(exist_ok=True)
+        (self.output_dir / "text").mkdir(exist_ok=True)
+        
+        # Archive directory
+        (self.output_dir / "archive").mkdir(exist_ok=True)
+        
     def _load_registry(self) -> Dict:
         """
         Load the output registry from file.
@@ -82,6 +111,341 @@ class OutputService:
                 json.dump(self.registry, f, indent=2)
         except Exception as e:
             print(f"Error saving registry: {e}")
+    
+    def _get_output_path(
+        self,
+        generation_id: str,
+        file_format: str
+    ) -> Path:
+        """
+        Get path for output file.
+        
+        Args:
+            generation_id: Generation ID.
+            file_format: File format.
+            
+        Returns:
+            Output file path.
+        """
+        # Determine subdirectory based on format
+        if file_format in [".wav", ".mp3", ".ogg", ".flac"]:
+            subdir = "audio"
+        elif file_format in [".mid", ".midi"]:
+            subdir = "midi"
+        else:
+            subdir = "text"
+            
+        return self.output_dir / subdir / f"{generation_id}{file_format}"
+    
+    async def save_output(
+        self,
+        generation: GenerationResource,
+        data: Any,
+        file_format: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Path:
+        """
+        Save generation output.
+        
+        Args:
+            generation: Generation resource.
+            data: Output data.
+            file_format: Output format.
+            metadata: Optional output metadata.
+            
+        Returns:
+            Path to saved file.
+            
+        Raises:
+            ProcessingError: If saving fails.
+        """
+        try:
+            # Get output path
+            output_path = self._get_output_path(
+                generation.resource_id,
+                file_format
+            )
+            
+            # Save file based on format
+            if file_format in [".wav", ".mp3", ".ogg", ".flac"]:
+                self.processor_manager.audio.save_audio(
+                    data,
+                    output_path
+                )
+            elif file_format in [".mid", ".midi"]:
+                self.processor_manager.midi.save_midi(
+                    data,
+                    output_path
+                )
+            else:
+                # Save text/JSON data
+                with open(output_path, "w") as f:
+                    if isinstance(data, (dict, list)):
+                        json.dump(data, f, indent=2)
+                    else:
+                        f.write(str(data))
+                        
+            # Save metadata if provided
+            if metadata:
+                metadata_path = output_path.with_suffix(".json")
+                with open(metadata_path, "w") as f:
+                    json.dump({
+                        "generation_id": generation.resource_id,
+                        "created_at": datetime.datetime.utcnow().isoformat(),
+                        **metadata
+                    }, f, indent=2)
+                    
+            return output_path
+            
+        except Exception as e:
+            raise ProcessingError(f"Error saving output: {e}")
+            
+    async def load_output(
+        self,
+        generation: GenerationResource
+    ) -> Any:
+        """
+        Load generation output.
+        
+        Args:
+            generation: Generation resource.
+            
+        Returns:
+            Output data.
+            
+        Raises:
+            ResourceNotFoundError: If output not found.
+            ProcessingError: If loading fails.
+        """
+        try:
+            if not generation.file_path:
+                raise ResourceNotFoundError("Generation has no output file")
+                
+            file_path = Path(generation.file_path)
+            if not file_path.exists():
+                raise ResourceNotFoundError(f"Output file not found: {file_path}")
+                
+            # Load file based on format
+            suffix = file_path.suffix.lower()
+            if suffix in [".wav", ".mp3", ".ogg", ".flac"]:
+                return self.processor_manager.audio.load_audio(file_path)
+            elif suffix in [".mid", ".midi"]:
+                return self.processor_manager.midi.load_midi(file_path)
+            else:
+                # Load text/JSON data
+                with open(file_path, "r") as f:
+                    if suffix == ".json":
+                        return json.load(f)
+                    else:
+                        return f.read()
+                        
+        except Exception as e:
+            raise ProcessingError(f"Error loading output: {e}")
+            
+    async def convert_output(
+        self,
+        generation: GenerationResource,
+        target_format: str,
+        config: Optional[Dict[str, Any]] = None
+    ) -> Path:
+        """
+        Convert generation output to different format.
+        
+        Args:
+            generation: Generation resource.
+            target_format: Target format.
+            config: Optional conversion configuration.
+            
+        Returns:
+            Path to converted file.
+            
+        Raises:
+            ResourceNotFoundError: If output not found.
+            ValidationError: If conversion not supported.
+            ProcessingError: If conversion fails.
+        """
+        try:
+            if not generation.file_path:
+                raise ResourceNotFoundError("Generation has no output file")
+                
+            input_path = Path(generation.file_path)
+            if not input_path.exists():
+                raise ResourceNotFoundError(f"Output file not found: {input_path}")
+                
+            # Get output path
+            output_path = self._get_output_path(
+                generation.resource_id,
+                target_format
+            )
+            
+            # Convert based on formats
+            input_format = input_path.suffix.lower()
+            if input_format in [".wav", ".mp3", ".ogg", ".flac"] and \
+               target_format in [".wav", ".mp3", ".ogg", ".flac"]:
+                # Audio format conversion
+                self.processor_manager.audio.convert_format(
+                    input_path,
+                    output_path,
+                    **(config or {})
+                )
+            else:
+                raise ValidationError(
+                    f"Conversion from {input_format} to {target_format} not supported"
+                )
+                
+            return output_path
+            
+        except Exception as e:
+            raise ProcessingError(f"Error converting output: {e}")
+            
+    async def archive_output(
+        self,
+        generation: GenerationResource
+    ) -> None:
+        """
+        Archive generation output.
+        
+        Args:
+            generation: Generation resource.
+            
+        Raises:
+            ResourceNotFoundError: If output not found.
+            ProcessingError: If archiving fails.
+        """
+        try:
+            if not generation.file_path:
+                raise ResourceNotFoundError("Generation has no output file")
+                
+            file_path = Path(generation.file_path)
+            if not file_path.exists():
+                raise ResourceNotFoundError(f"Output file not found: {file_path}")
+                
+            # Move file to archive
+            archive_path = self.output_dir / "archive" / file_path.name
+            shutil.move(file_path, archive_path)
+            
+            # Move metadata if exists
+            metadata_path = file_path.with_suffix(".json")
+            if metadata_path.exists():
+                archive_metadata_path = archive_path.with_suffix(".json")
+                shutil.move(metadata_path, archive_metadata_path)
+                
+            # Update generation
+            generation.file_path = str(archive_path)
+            generation.archive()
+            
+        except Exception as e:
+            raise ProcessingError(f"Error archiving output: {e}")
+            
+    async def delete_output(
+        self,
+        generation: GenerationResource
+    ) -> None:
+        """
+        Delete generation output.
+        
+        Args:
+            generation: Generation resource.
+            
+        Raises:
+            ResourceNotFoundError: If output not found.
+            ProcessingError: If deletion fails.
+        """
+        try:
+            if not generation.file_path:
+                raise ResourceNotFoundError("Generation has no output file")
+                
+            file_path = Path(generation.file_path)
+            if not file_path.exists():
+                raise ResourceNotFoundError(f"Output file not found: {file_path}")
+                
+            # Delete file
+            file_path.unlink()
+            
+            # Delete metadata if exists
+            metadata_path = file_path.with_suffix(".json")
+            if metadata_path.exists():
+                metadata_path.unlink()
+                
+            # Update generation
+            generation.file_path = None
+            generation.delete()
+            
+        except Exception as e:
+            raise ProcessingError(f"Error deleting output: {e}")
+            
+    def get_output_info(
+        self,
+        generation: GenerationResource
+    ) -> Dict[str, Any]:
+        """
+        Get information about generation output.
+        
+        Args:
+            generation: Generation resource.
+            
+        Returns:
+            Dictionary of output information.
+            
+        Raises:
+            ResourceNotFoundError: If output not found.
+        """
+        if not generation.file_path:
+            raise ResourceNotFoundError("Generation has no output file")
+            
+        file_path = Path(generation.file_path)
+        if not file_path.exists():
+            raise ResourceNotFoundError(f"Output file not found: {file_path}")
+            
+        # Get file information
+        info = {
+            "path": str(file_path),
+            "format": file_path.suffix.lower(),
+            "size": file_path.stat().st_size,
+            "created_at": datetime.datetime.fromtimestamp(
+                file_path.stat().st_ctime
+            ).isoformat(),
+            "modified_at": datetime.datetime.fromtimestamp(
+                file_path.stat().st_mtime
+            ).isoformat()
+        }
+        
+        # Get format-specific information
+        suffix = file_path.suffix.lower()
+        if suffix in [".wav", ".mp3", ".ogg", ".flac"]:
+            # Audio file analysis
+            try:
+                info.update({
+                    "duration": self.processor_manager.audio.get_duration(file_path),
+                    "tempo": self.processor_manager.audio.get_tempo(file_path),
+                    "key": self.processor_manager.audio.get_key(file_path)
+                })
+            except Exception as e:
+                self.logger.warning(f"Error analyzing audio file: {e}")
+                
+        elif suffix in [".mid", ".midi"]:
+            # MIDI file analysis
+            try:
+                midi = self.processor_manager.midi.load_midi(file_path)
+                info.update({
+                    "duration": self.processor_manager.midi.get_duration(midi),
+                    "tempo": self.processor_manager.midi.get_tempo(midi),
+                    "key": self.processor_manager.midi.get_key(midi),
+                    "time_signature": self.processor_manager.midi.get_time_signature(midi)
+                })
+            except Exception as e:
+                self.logger.warning(f"Error analyzing MIDI file: {e}")
+                
+        # Get metadata if exists
+        metadata_path = file_path.with_suffix(".json")
+        if metadata_path.exists():
+            try:
+                with open(metadata_path, "r") as f:
+                    info["metadata"] = json.load(f)
+            except Exception as e:
+                self.logger.warning(f"Error loading metadata: {e}")
+                
+        return info
     
     def save_audio_output(
         self,
@@ -113,8 +477,8 @@ class OutputService:
             filename = f"{output_id}_{timestamp}.{output_format}"
             
             # Save audio
-            audio_path = self.audio_dir / filename
-            self.audio_processor.save_audio(
+            audio_path = self.output_dir / "audio" / filename
+            self.processor_manager.audio.save_audio(
                 audio_data=audio_data,
                 output_path=audio_path,
                 sr=sample_rate,
@@ -125,17 +489,17 @@ class OutputService:
             visualization_paths = {}
             if visualization:
                 # Generate waveform visualization
-                waveform_path = self.visualization_dir / f"{output_id}_waveform.png"
+                waveform_path = self.output_dir / "visualizations" / f"{output_id}_waveform.png"
                 self._create_waveform_visualization(audio_data, sample_rate, waveform_path)
                 visualization_paths["waveform"] = str(waveform_path)
                 
                 # Generate spectrogram visualization
-                spectrogram_path = self.visualization_dir / f"{output_id}_spectrogram.png"
+                spectrogram_path = self.output_dir / "visualizations" / f"{output_id}_spectrogram.png"
                 self._create_spectrogram_visualization(audio_data, sample_rate, spectrogram_path)
                 visualization_paths["spectrogram"] = str(spectrogram_path)
             
             # Save metadata
-            metadata_path = self.metadata_dir / f"{output_id}.json"
+            metadata_path = self.output_dir / "metadata" / f"{output_id}.json"
             full_metadata = {
                 "output_id": output_id,
                 "timestamp": datetime.datetime.now().isoformat(),
@@ -196,7 +560,7 @@ class OutputService:
             filename = f"{output_id}_{timestamp}.mid"
             
             # Save MIDI
-            midi_path = self.midi_dir / filename
+            midi_path = self.output_dir / "midi" / filename
             
             # Determine MIDI type and save accordingly
             if hasattr(midi_data, 'write'):  # music21 Score
@@ -212,7 +576,7 @@ class OutputService:
                 pass
             
             # Save metadata
-            metadata_path = self.metadata_dir / f"{output_id}.json"
+            metadata_path = self.output_dir / "metadata" / f"{output_id}.json"
             full_metadata = {
                 "output_id": output_id,
                 "timestamp": datetime.datetime.now().isoformat(),
@@ -272,7 +636,7 @@ class OutputService:
                 if output_info["type"] == "audio":
                     audio_path = output_info["path"]
                     if os.path.exists(audio_path):
-                        audio_data, sample_rate = self.audio_processor.load_audio(audio_path)
+                        audio_data, sample_rate = self.processor_manager.audio.load_audio(audio_path)
                         return {
                             **metadata,
                             "audio_data": audio_data,
@@ -468,7 +832,7 @@ class OutputService:
             self._save_registry()
             
             # Create collection file
-            collection_path = self.collections_dir / f"{collection_id}.json"
+            collection_path = self.output_dir / "collections" / f"{collection_id}.json"
             with open(collection_path, 'w') as f:
                 json.dump(collection, f, indent=2)
             
@@ -501,7 +865,7 @@ class OutputService:
             self.registry["collections"][collection_id]["updated_at"] = datetime.datetime.now().isoformat()
             
             # Update collection file
-            collection_path = self.collections_dir / f"{collection_id}.json"
+            collection_path = self.output_dir / "collections" / f"{collection_id}.json"
             with open(collection_path, 'w') as f:
                 json.dump(self.registry["collections"][collection_id], f, indent=2)
             
@@ -553,7 +917,7 @@ class OutputService:
             if output_info["type"] == "audio":
                 if format and format != os.path.splitext(source_path)[1][1:]:
                     # Convert audio format
-                    self.audio_processor.convert_format(
+                    self.processor_manager.audio.convert_format(
                         audio_path=source_path,
                         output_format=format,
                         output_path=export_path
@@ -718,7 +1082,11 @@ class OutputService:
 
 
 # Create a global output service instance
-output_service = OutputService()
+output_service = OutputService(
+    resource_manager=ResourceManager(),
+    processor_manager=ProcessorManager(),
+    output_dir=Path(config.get("paths", "output_dir", "outputs"))
+)
 
 
 def get_output_service() -> OutputService:
